@@ -61,3 +61,4 @@ Update this section as work lands:
 
 - 2026-03-03: audit completed across Looksy + both consumer repos; P0/P1/P2 backlog captured.
 - 2026-03-03: P0 completed in Looksy (artifact retrieval + SDK envelope alignment + screenshot payload compatibility), with integration hardening landed in consumer routing layers.
+- 2026-03-03: P1 hardening started: session TTL enforcement + non-adapter failure telemetry coverage in host-core, plus expanded routing/fallback matrix tests in consumer integrations.
