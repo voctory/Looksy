@@ -181,10 +181,10 @@ With 2 senior engineers + 1 QA/automation engineer:
 
 ## 9. Immediate Next Steps (Execution-Focused)
 
-1. Complete P0 superset blockers from `docs/superset-gap-audit-backlog.md` and `docs/superset-gap-remediation-plan.md` (artifact retrieval + SDK wire alignment + screenshot payload compatibility + browser/session/policy parity items).
+1. Execute P1 parity backlog from `docs/superset-gap-audit-backlog.md` and `docs/superset-gap-remediation-plan.md` (browser command families, routing breadth, parity tests, session/policy hardening).
 2. Add CI workflows that run `npm run typecheck` and `npm test` on every pull request.
 3. Add protocol binding/codegen for C# and Rust so non-TS SDKs are generated from source-of-truth schemas.
 4. Replace simulated adapter internals with real macOS and Windows automation backends behind the same interface.
-5. Implement integration adapters in consumer applications behind feature flags with rollback toggles.
+5. Expand consumer integrations to reduce fallback scope and add route-level telemetry for unsupported semantics.
 6. Add conformance coverage for mixed-DPI/multi-monitor coordinate mapping and permission-denied branches.
-7. Start phased integration milestones for phases 9-14 with telemetry-based go/no-go gates.
+7. Continue phased integration milestones for phases 9-14 with telemetry-based go/no-go gates.
