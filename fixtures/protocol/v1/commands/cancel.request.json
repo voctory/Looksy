@@ -1,0 +1,9 @@
+{
+  "protocolVersion": "1.0.0",
+  "requestId": "cmd-cancel-001",
+  "sessionId": "$session",
+  "command": {
+    "type": "control.cancel",
+    "targetRequestId": "cmd-long-running-001"
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "ok": false,
+  "protocolVersion": "1.0.0",
+  "requestId": "cmd-long-running-001",
+  "error": {
+    "code": "TIMEOUT",
+    "retriable": true,
+    "message": "$any:nonEmptyString"
+  }
+}

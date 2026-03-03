@@ -1,0 +1,13 @@
+{
+  "ok": true,
+  "protocolVersion": "1.0.0",
+  "requestId": "cmd-health-001",
+  "result": {
+    "type": "health.pong",
+    "status": "ok",
+    "adapter": {
+      "$oneOf": ["macos", "windows"]
+    },
+    "now": "$any:nonEmptyString"
+  }
+}

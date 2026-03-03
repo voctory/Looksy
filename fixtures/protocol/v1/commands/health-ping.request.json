@@ -1,0 +1,8 @@
+{
+  "protocolVersion": "1.0.0",
+  "requestId": "cmd-health-001",
+  "sessionId": "$session",
+  "command": {
+    "type": "health.ping"
+  }
+}

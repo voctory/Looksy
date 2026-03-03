@@ -1,0 +1,14 @@
+{
+  "protocolVersion": "1.0.0",
+  "requestId": "hs-valid-001",
+  "authToken": "token-fixture-valid",
+  "client": {
+    "name": "looksy-conformance-suite",
+    "version": "0.0.0-fixture"
+  },
+  "requestedCapabilities": [
+    "health.ping",
+    "screen.capture",
+    "input.click"
+  ]
+}

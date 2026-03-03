@@ -1,0 +1,58 @@
+{
+  "schemaVersion": "1.0.0",
+  "cases": [
+    {
+      "id": "handshake.success",
+      "operation": "handshake",
+      "request": "handshake/client-hello.valid.json",
+      "expected": "handshake/server-hello.success.json",
+      "tags": ["conformance", "handshake"]
+    },
+    {
+      "id": "command.screenshot.success",
+      "operation": "command",
+      "request": "commands/screenshot.request.json",
+      "expected": "results/screenshot.success.json",
+      "tags": ["conformance", "command"]
+    },
+    {
+      "id": "command.health-ping.success",
+      "operation": "command",
+      "request": "commands/health-ping.request.json",
+      "expected": "results/health-ping.success.json",
+      "tags": ["conformance", "command"]
+    },
+    {
+      "id": "handshake.auth-invalid-token",
+      "operation": "handshake",
+      "request": "handshake/client-hello.invalid-token.json",
+      "expected": "errors/auth.invalid-token.json",
+      "tags": ["conformance", "regression", "error", "auth"]
+    },
+    {
+      "id": "command.policy-denied",
+      "operation": "command",
+      "request": "commands/blocked-command.request.json",
+      "expected": "errors/policy.denied.json",
+      "tags": ["conformance", "regression", "error", "policy"]
+    },
+    {
+      "id": "command.timeout-exceeded",
+      "operation": "command",
+      "request": "commands/long-running.request.json",
+      "expected": "errors/timeout.exceeded.json",
+      "tags": ["conformance", "regression", "error", "timeout"]
+    },
+    {
+      "id": "command.cancelled-by-client",
+      "operation": "cancel",
+      "preRequest": "commands/long-running-for-cancel.request.json",
+      "request": "commands/cancel.request.json",
+      "expected": "errors/cancelled.by-client.json",
+      "context": {
+        "cancelDelayMs": 5
+      },
+      "tags": ["conformance", "regression", "error", "cancel"]
+    }
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "ok": false,
+  "protocolVersion": "1.0.0",
+  "requestId": "cmd-policy-001",
+  "error": {
+    "code": "POLICY_DENIED",
+    "retriable": false,
+    "message": "$any:nonEmptyString"
+  }
+}

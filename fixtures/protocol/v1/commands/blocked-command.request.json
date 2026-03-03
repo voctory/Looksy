@@ -1,0 +1,9 @@
+{
+  "protocolVersion": "1.0.0",
+  "requestId": "cmd-policy-001",
+  "sessionId": "$session",
+  "command": {
+    "type": "screen.capture",
+    "format": "png"
+  }
+}

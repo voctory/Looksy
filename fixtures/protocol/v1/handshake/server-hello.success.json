@@ -1,0 +1,15 @@
+{
+  "ok": true,
+  "protocolVersion": "1.0.0",
+  "requestId": "hs-valid-001",
+  "session": {
+    "sessionId": "$any:nonEmptyString",
+    "adapter": {
+      "$oneOf": ["macos", "windows"]
+    },
+    "capabilities": {
+      "$includes": ["screen.capture", "input.click"]
+    },
+    "issuedAt": "$any:nonEmptyString"
+  }
+}

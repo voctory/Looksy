@@ -1,0 +1,10 @@
+{
+  "ok": false,
+  "protocolVersion": "1.0.0",
+  "requestId": "hs-invalid-001",
+  "error": {
+    "code": "AUTH_FAILED",
+    "retriable": false,
+    "message": "$any:nonEmptyString"
+  }
+}
