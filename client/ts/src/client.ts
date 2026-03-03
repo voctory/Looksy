@@ -49,9 +49,6 @@ export interface CommandInvocationOptions {
 export interface ScreenshotPayload {
   region?: Rect;
   format?: "png" | "jpeg";
-  quality?: number;
-  displayId?: string;
-  includeCursor?: boolean;
 }
 
 export interface WindowsListPayload {
@@ -154,7 +151,11 @@ export class LooksyClient {
     payload: ScreenshotPayload = {},
     options: CommandInvocationOptions = {},
   ): Promise<CommandResponse<TResult>> {
-    return this.namedCommand<TResult, ScreenshotPayload>(this.commandTypes.screenshot, payload, options);
+    return this.namedCommand<TResult, ScreenshotPayload>(
+      this.commandTypes.screenshot,
+      normalizeScreenshotPayload(payload),
+      options,
+    );
   }
 
   public async windowsList<TResult = unknown>(
@@ -226,4 +227,11 @@ function createRequestId(): string {
   }
 
   return `req_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+}
+
+function normalizeScreenshotPayload(payload: ScreenshotPayload): ScreenshotPayload {
+  return {
+    format: payload.format,
+    region: payload.region,
+  };
 }

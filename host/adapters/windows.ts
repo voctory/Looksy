@@ -80,14 +80,27 @@ export class WindowsAdapter implements HostAdapter {
           type: "health.capabilities",
           capabilities: [...WINDOWS_CAPABILITIES, "control.cancel", "observability.getMetrics"],
         };
-      case "screen.capture":
+      case "screen.capture": {
+        const artifactId = `windows-${context.requestId}`;
+        const mimeType = mimeTypeForFormat(command.format);
+        const capturedAt = new Date().toISOString();
+        context.persistScreenshotArtifact({
+          artifactId,
+          mimeType,
+          bytes: Buffer.from(
+            `looksy-screenshot:${this.platform}:${context.requestId}:${command.format ?? "png"}`,
+            "utf8",
+          ),
+          capturedAt,
+        });
         return {
           type: "screen.captured",
-          artifactId: `windows-${context.requestId}`,
-          mimeType: mimeTypeForFormat(command.format),
-          capturedAt: new Date().toISOString(),
+          artifactId,
+          mimeType,
+          capturedAt,
           ...(command.region ? { region: command.region } : {}),
         };
+      }
       case "input.moveMouse":
         return {
           type: "input.mouseMoved",

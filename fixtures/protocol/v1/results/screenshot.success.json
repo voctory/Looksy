@@ -6,6 +6,7 @@
     "type": "screen.captured",
     "artifactId": "$any:nonEmptyString",
     "mimeType": "image/png",
-    "capturedAt": "$any:nonEmptyString"
+    "capturedAt": "$any:nonEmptyString",
+    "artifactUrl": "$any:nonEmptyString"
   }
 }

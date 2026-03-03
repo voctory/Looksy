@@ -63,6 +63,18 @@ describe("cli command wrappers", () => {
     });
   });
 
+  it("builds screen.capture envelope with protocol-supported screenshot fields only", async () => {
+    const run = await runCommand(["screenshot", "--format", "png", "--request-id", "req-shot"]);
+    expect(run.execution.code).toBe(0);
+    expect(run.execution.stderr).toBe("");
+    expect(run.requests).toHaveLength(1);
+    expect(run.requests[0].body.requestId).toBe("req-shot");
+    expect(run.requests[0].body.command).toEqual({
+      type: "screen.capture",
+      format: "png",
+    });
+  });
+
   it("builds element.find envelope with selector and window scope", async () => {
     const run = await runCommand(["find-element", "button.save", "--window-id", "win-main"]);
     expect(run.execution.code).toBe(0);
@@ -108,6 +120,19 @@ describe("cli command wrappers", () => {
     };
     expect(errorPayload.ok).toBe(false);
     expect(errorPayload.error.message).toContain("--action must be one of");
+  });
+
+  it("rejects unsupported screenshot flags with a CLI error", async () => {
+    const run = await runCommand(["screenshot", "--include-cursor"]);
+    expect(run.execution.code).toBe(1);
+    expect(run.requests).toHaveLength(0);
+
+    const errorPayload = JSON.parse(run.execution.stderr.trim()) as {
+      ok: boolean;
+      error: { message: string };
+    };
+    expect(errorPayload.ok).toBe(false);
+    expect(errorPayload.error.message).toContain("Unknown option: --include-cursor");
   });
 });
 

@@ -229,6 +229,46 @@ describe("HostCore", () => {
     }
   });
 
+  it("persists screenshot artifacts and returns retrieval metadata", async () => {
+    const core = new HostCore({
+      adapter: new MacOSAdapter(),
+      authToken: AUTH_TOKEN,
+    });
+
+    const sessionId = await createSession(core, "hs-artifacts");
+    const alternateSessionId = await createSession(core, "hs-artifacts-alt");
+    const response = await core.command({
+      protocolVersion: PROTOCOL_VERSION,
+      requestId: "cmd-artifact",
+      sessionId,
+      command: {
+        type: "screen.capture",
+      },
+    });
+
+    expect(response.ok).toBe(true);
+    if (!response.ok || response.result.type !== "screen.captured") {
+      return;
+    }
+
+    const expectedUrl = `/v1/artifacts/${encodeURIComponent(response.result.artifactId)}?sessionId=${encodeURIComponent(sessionId)}`;
+    expect(response.result.artifactUrl).toBe(expectedUrl);
+
+    const stored = core.readScreenshotArtifact({
+      artifactId: response.result.artifactId,
+      sessionId,
+    });
+    expect(stored).not.toBeNull();
+    expect(stored?.mimeType).toBe(response.result.mimeType);
+    expect(stored?.bytes).toEqual(Buffer.from("looksy-screenshot:macos:cmd-artifact:png", "utf8"));
+
+    const denied = core.readScreenshotArtifact({
+      artifactId: response.result.artifactId,
+      sessionId: alternateSessionId,
+    });
+    expect(denied).toBeNull();
+  });
+
   it("returns a metrics snapshot through observability.getMetrics", async () => {
     const core = new HostCore({
       adapter: new MacOSAdapter({

@@ -217,6 +217,7 @@ const ScreenCapturedResultSchema = z
     artifactId: z.string().min(1),
     mimeType: z.string().min(1),
     capturedAt: z.string().datetime(),
+    artifactUrl: z.string().min(1).optional(),
     region: RectSchema.optional(),
   })
   .strict();

@@ -209,9 +209,6 @@ function parseHandshakeArgs(args, globalOptions) {
 function parseScreenshotArgs(args) {
   const parsed = parseKeyValueArgs(args, {
     "--format": "value",
-    "--quality": "value",
-    "--display-id": "value",
-    "--include-cursor": "optional-boolean",
     "--request-id": "value",
     "--timeout-ms": "value",
     "--session-id": "value",
@@ -220,9 +217,6 @@ function parseScreenshotArgs(args) {
   return {
     payload: compactObject({
       format: parsed.values["--format"],
-      quality: parsed.values["--quality"] ? parseInteger(parsed.values["--quality"], undefined) : undefined,
-      displayId: parsed.values["--display-id"],
-      includeCursor: parsed.values["--include-cursor"],
     }),
     envelope: envelopeFromParsedValues(parsed.values),
   };
@@ -701,9 +695,6 @@ command envelope options (supported by health/capabilities/metrics/screenshot/wi
 
 screenshot options:
   --format <png|jpeg>
-  --quality <0-100>
-  --display-id <id>
-  --include-cursor [true|false]
 
 windows list options:
   --include-minimized [true|false]

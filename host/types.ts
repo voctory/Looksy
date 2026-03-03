@@ -6,10 +6,18 @@ type HostManagedCommandPayload = Extract<CommandPayload, { type: "control.cancel
 export type AdapterCommandPayload = Exclude<CommandPayload, HostManagedCommandPayload>;
 export type AdapterCommandType = AdapterCommandPayload["type"];
 
+export interface ScreenshotArtifactPayload {
+  artifactId: string;
+  mimeType: string;
+  bytes: Uint8Array;
+  capturedAt?: string;
+}
+
 export interface AdapterExecutionContext {
   signal: AbortSignal;
   sessionId: string;
   requestId: RequestId;
+  persistScreenshotArtifact: (artifact: ScreenshotArtifactPayload) => void;
 }
 
 export interface HostAdapter {

@@ -73,4 +73,16 @@ describe("protocol schemas", () => {
 
     expect(parsed.success).toBe(true);
   });
+
+  it("accepts screen capture retrieval metadata in result payloads", () => {
+    const parsed = CommandResultPayloadSchema.safeParse({
+      type: "screen.captured",
+      artifactId: "artifact-1",
+      mimeType: "image/png",
+      capturedAt: "2026-03-03T00:00:00.000Z",
+      artifactUrl: "/v1/artifacts/artifact-1?sessionId=session-1",
+    });
+
+    expect(parsed.success).toBe(true);
+  });
 });

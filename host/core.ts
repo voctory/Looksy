@@ -7,6 +7,7 @@ import {
   type CommandEnvelope,
   type CommandPayload,
   type CommandResultEnvelope,
+  type CommandResultPayload,
   type ErrorCode,
   type HandshakeResultEnvelope,
   createProtocolError,
@@ -14,11 +15,12 @@ import {
 } from "../protocol";
 import { InMemoryMetricsRecorder, type HostMetricsRecorder } from "./metrics";
 import { AllowAllPolicy, type CommandPolicy } from "./policy";
-import type { AdapterCommandPayload, HostAdapter, SessionRecord } from "./types";
+import type { AdapterCommandPayload, HostAdapter, ScreenshotArtifactPayload, SessionRecord } from "./types";
 
 const ABORT_REASON_TIMEOUT = "timeout";
 const ABORT_REASON_CANCELLED = "cancelled";
 const HOST_MANAGED_CAPABILITIES = ["control.cancel", "observability.getMetrics"] as const satisfies readonly CommandPayload["type"][];
+const DEFAULT_MAX_SCREENSHOT_ARTIFACTS = 128;
 
 interface InFlightRequest {
   controller: AbortController;
@@ -32,6 +34,13 @@ type CommandErrorEnvelope = Extract<CommandResultEnvelope, { ok: false }>;
 
 interface StoredAuthToken {
   expiresAtMs?: number;
+}
+
+interface StoredScreenshotArtifact {
+  sessionId: string;
+  mimeType: string;
+  bytes: Buffer;
+  capturedAt: string;
 }
 
 export interface HostAuthTokenDefinition {
@@ -49,6 +58,7 @@ interface HostCoreBaseOptions {
   adapter: HostAdapter;
   policy?: CommandPolicy;
   defaultTimeoutMs?: number;
+  maxScreenshotArtifacts?: number;
   now?: () => Date;
   sessionIdFactory?: () => string;
   metrics?: HostMetricsRecorder;
@@ -71,16 +81,19 @@ export class HostCore {
   private readonly authTokens = new Map<string, StoredAuthToken>();
   private readonly policy: CommandPolicy;
   private readonly defaultTimeoutMs: number;
+  private readonly maxScreenshotArtifacts: number;
   private readonly now: () => Date;
   private readonly sessionIdFactory: () => string;
   private readonly metrics: HostMetricsRecorder;
   private readonly sessions = new Map<string, SessionRecord>();
   private readonly inFlight = new Map<string, InFlightRequest>();
+  private readonly screenshotArtifacts = new Map<string, StoredScreenshotArtifact>();
 
   constructor(options: HostCoreOptions) {
     this.adapter = options.adapter;
     this.policy = options.policy ?? new AllowAllPolicy();
     this.defaultTimeoutMs = options.defaultTimeoutMs ?? 10_000;
+    this.maxScreenshotArtifacts = normalizeMaxScreenshotArtifacts(options.maxScreenshotArtifacts);
     this.now = options.now ?? (() => new Date());
     this.sessionIdFactory = options.sessionIdFactory ?? randomUUID;
     this.metrics = options.metrics ?? new InMemoryMetricsRecorder();
@@ -243,6 +256,28 @@ export class HostCore {
     });
   }
 
+  readScreenshotArtifact(params: {
+    artifactId: string;
+    sessionId: string;
+  }): { bytes: Buffer; mimeType: string; capturedAt: string } | null {
+    const artifactId = params.artifactId.trim();
+    const sessionId = params.sessionId.trim();
+    if (!artifactId || !sessionId || !this.sessions.has(sessionId)) {
+      return null;
+    }
+
+    const stored = this.screenshotArtifacts.get(artifactId);
+    if (!stored || stored.sessionId !== sessionId) {
+      return null;
+    }
+
+    return {
+      bytes: Buffer.from(stored.bytes),
+      mimeType: stored.mimeType,
+      capturedAt: stored.capturedAt,
+    };
+  }
+
   private initializeAuthTokens(options: HostCoreOptions): void {
     const initialTokens: HostAuthTokenInput[] = [];
     if ("authToken" in options && typeof options.authToken === "string") {
@@ -311,6 +346,9 @@ export class HostCore {
         signal: controller.signal,
         sessionId: envelope.sessionId,
         requestId: envelope.requestId,
+        persistScreenshotArtifact: (artifact) => {
+          this.persistScreenshotArtifact(envelope.sessionId, artifact);
+        },
       });
 
       if (controller.signal.aborted) {
@@ -325,11 +363,12 @@ export class HostCore {
       }
 
       this.metrics.recordSuccess(envelope.command.type, Date.now() - startedAtMs, this.adapter.platform);
+      const responseResult = this.withArtifactRetrievalMetadata(envelope.sessionId, result);
       return {
         protocolVersion: PROTOCOL_VERSION,
         requestId: envelope.requestId,
         ok: true,
-        result,
+        result: responseResult,
       };
     } catch (error) {
       if (controller.signal.aborted) {
@@ -357,6 +396,58 @@ export class HostCore {
       clearTimeout(timeoutHandle);
       this.inFlight.delete(envelope.requestId);
     }
+  }
+
+  private persistScreenshotArtifact(sessionId: string, artifact: ScreenshotArtifactPayload): void {
+    const artifactId = artifact.artifactId.trim();
+    const mimeType = artifact.mimeType.trim();
+    if (!artifactId || !mimeType) {
+      return;
+    }
+
+    const bytes = Buffer.from(artifact.bytes);
+    if (bytes.byteLength === 0) {
+      return;
+    }
+
+    const capturedAtRaw = artifact.capturedAt?.trim();
+    const capturedAt = capturedAtRaw || this.now().toISOString();
+
+    if (this.screenshotArtifacts.has(artifactId)) {
+      this.screenshotArtifacts.delete(artifactId);
+    }
+
+    this.screenshotArtifacts.set(artifactId, {
+      sessionId,
+      mimeType,
+      bytes,
+      capturedAt,
+    });
+
+    while (this.screenshotArtifacts.size > this.maxScreenshotArtifacts) {
+      const oldest = this.screenshotArtifacts.keys().next();
+      if (oldest.done) {
+        break;
+      }
+
+      this.screenshotArtifacts.delete(oldest.value);
+    }
+  }
+
+  private withArtifactRetrievalMetadata(sessionId: string, result: CommandResultPayload): CommandResultPayload {
+    if (result.type !== "screen.captured") {
+      return result;
+    }
+
+    const artifact = this.screenshotArtifacts.get(result.artifactId);
+    if (!artifact || artifact.sessionId !== sessionId) {
+      return result;
+    }
+
+    return {
+      ...result,
+      artifactUrl: buildArtifactUrl(result.artifactId, sessionId),
+    };
   }
 
   private handleCancelCommand(sessionId: string, targetRequestId: string) {
@@ -426,6 +517,18 @@ function parseExpiryToMs(expiresAt: string | Date): number {
   }
 
   return expiresAtMs;
+}
+
+function normalizeMaxScreenshotArtifacts(value: number | undefined): number {
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
+    return DEFAULT_MAX_SCREENSHOT_ARTIFACTS;
+  }
+
+  return Math.max(1, Math.floor(value));
+}
+
+function buildArtifactUrl(artifactId: string, sessionId: string): string {
+  return `/v1/artifacts/${encodeURIComponent(artifactId)}?sessionId=${encodeURIComponent(sessionId)}`;
 }
 
 function getRequestIdFromUnknown(input: unknown): string {

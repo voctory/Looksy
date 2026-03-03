@@ -83,12 +83,21 @@ export class LocalHttpHostServer {
   }
 
   private async handleRequest(request: http.IncomingMessage, response: http.ServerResponse): Promise<void> {
-    if (!request.url || request.method !== "POST") {
+    if (!request.url) {
       this.writePlain(response, 404, "Not Found");
       return;
     }
 
     const url = new URL(request.url, "http://localhost");
+    if (request.method === "GET" && this.tryServeArtifact(url, response)) {
+      return;
+    }
+
+    if (request.method !== "POST") {
+      this.writePlain(response, 404, "Not Found");
+      return;
+    }
+
     if (url.pathname !== "/v1/handshake" && url.pathname !== "/v1/command") {
       this.writePlain(response, 404, "Not Found");
       return;
@@ -114,6 +123,44 @@ export class LocalHttpHostServer {
 
     const result = await this.core.command(body.value);
     this.writeJson(response, getStatusCode(result), result);
+  }
+
+  private tryServeArtifact(url: URL, response: http.ServerResponse): boolean {
+    if (!url.pathname.startsWith("/v1/artifacts/")) {
+      return false;
+    }
+
+    const encodedArtifactId = url.pathname.slice("/v1/artifacts/".length);
+    if (!encodedArtifactId) {
+      this.writePlain(response, 404, "Not Found");
+      return true;
+    }
+
+    let artifactId: string;
+    try {
+      artifactId = decodeURIComponent(encodedArtifactId);
+    } catch {
+      this.writePlain(response, 400, "Invalid artifact id encoding");
+      return true;
+    }
+
+    const sessionId = url.searchParams.get("sessionId")?.trim() ?? "";
+    if (!sessionId) {
+      this.writePlain(response, 400, "sessionId is required");
+      return true;
+    }
+
+    const artifact = this.core.readScreenshotArtifact({ artifactId, sessionId });
+    if (!artifact) {
+      this.writePlain(response, 404, "Not Found");
+      return true;
+    }
+
+    response.statusCode = 200;
+    response.setHeader("content-type", artifact.mimeType);
+    response.setHeader("cache-control", "no-store");
+    response.end(artifact.bytes);
+    return true;
   }
 
   private async readJsonBody(request: http.IncomingMessage): Promise<{ kind: "ok"; value: unknown } | { kind: "error"; message: string }> {

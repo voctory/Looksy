@@ -29,7 +29,7 @@ CLI for interacting with a local Looksy host API.
 looksy --host http://127.0.0.1:4064 handshake --client-name ci-smoke --client-version 1.0.0
 looksy --session-id <SESSION_ID> --json health
 looksy --session-id <SESSION_ID> --json metrics
-looksy --session-id <SESSION_ID> screenshot --format png --include-cursor
+looksy --session-id <SESSION_ID> screenshot --format png
 looksy --session-id <SESSION_ID> windows list --include-minimized
 looksy --session-id <SESSION_ID> focus-window mac-main --json
 looksy --session-id <SESSION_ID> find-element "button.save" --window-id mac-main --json
