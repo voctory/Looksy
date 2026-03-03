@@ -49,7 +49,12 @@ node cli/looksy.js --host http://127.0.0.1:4064 --token token-fixture-valid hand
 
 # run a command with the session id from handshake
 node cli/looksy.js --host http://127.0.0.1:4064 --session-id <SESSION_ID> health --json
+node cli/looksy.js --host http://127.0.0.1:4064 --session-id <SESSION_ID> metrics --json
 node cli/looksy.js --host http://127.0.0.1:4064 --session-id <SESSION_ID> windows list --json
+node cli/looksy.js --host http://127.0.0.1:4064 --session-id <SESSION_ID> focus-window mac-main --json
+node cli/looksy.js --host http://127.0.0.1:4064 --session-id <SESSION_ID> find-element "button.save" --window-id mac-main --json
+node cli/looksy.js --host http://127.0.0.1:4064 --session-id <SESSION_ID> invoke-element mac-btn-save press --json
+node cli/looksy.js --host http://127.0.0.1:4064 --session-id <SESSION_ID> set-element-value mac-input-search "hello world" --json
 
 # generic command mode (protocol v1 command names)
 node cli/looksy.js --host http://127.0.0.1:4064 --session-id <SESSION_ID> command health.getCapabilities --json

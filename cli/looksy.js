@@ -42,6 +42,12 @@ async function main() {
       printResult("capabilities", response, globalOptions.json);
       return;
     }
+    case "metrics": {
+      const envelope = parseEnvelopeArgs(args);
+      const response = await sendCommand(globalOptions, "observability.getMetrics", {}, envelope);
+      printResult("metrics", response, globalOptions.json);
+      return;
+    }
     case "screenshot": {
       const { payload, envelope } = parseScreenshotArgs(args);
       const response = await sendCommand(globalOptions, "screen.capture", payload, envelope);
@@ -56,6 +62,30 @@ async function main() {
       const { payload, envelope } = parseWindowsListArgs(args.slice(1));
       const response = await sendCommand(globalOptions, "app.listWindows", payload, envelope);
       printResult("app.listWindows", response, globalOptions.json);
+      return;
+    }
+    case "focus-window": {
+      const { payload, envelope } = parseFocusWindowArgs(args);
+      const response = await sendCommand(globalOptions, "app.focusWindow", payload, envelope);
+      printResult("app.focusWindow", response, globalOptions.json);
+      return;
+    }
+    case "find-element": {
+      const { payload, envelope } = parseFindElementArgs(args);
+      const response = await sendCommand(globalOptions, "element.find", payload, envelope);
+      printResult("element.find", response, globalOptions.json);
+      return;
+    }
+    case "invoke-element": {
+      const { payload, envelope } = parseInvokeElementArgs(args);
+      const response = await sendCommand(globalOptions, "element.invoke", payload, envelope);
+      printResult("element.invoke", response, globalOptions.json);
+      return;
+    }
+    case "set-element-value": {
+      const { payload, envelope } = parseSetElementValueArgs(args);
+      const response = await sendCommand(globalOptions, "element.setValue", payload, envelope);
+      printResult("element.setValue", response, globalOptions.json);
       return;
     }
     case "command": {
@@ -224,6 +254,155 @@ function parseEnvelopeArgs(args) {
   });
 
   return envelopeFromParsedValues(parsed.values);
+}
+
+function parseFocusWindowArgs(args) {
+  const { positionalValues, remaining } = parseLeadingPositionalArgs(args, 1);
+  const parsed = parseKeyValueArgs(remaining, {
+    "--window-id": "value",
+    "--request-id": "value",
+    "--timeout-ms": "value",
+    "--session-id": "value",
+  });
+
+  const positionalWindowId = positionalValues[0];
+  const optionWindowId = parsed.values["--window-id"];
+  const windowId = optionWindowId ?? positionalWindowId;
+  if (!windowId) {
+    throw new Error("Usage: looksy focus-window <window-id> [--request-id <id>] [--timeout-ms <ms>]");
+  }
+
+  if (optionWindowId && positionalWindowId && optionWindowId !== positionalWindowId) {
+    throw new Error("Conflicting window IDs provided via positional argument and --window-id.");
+  }
+
+  return {
+    payload: { windowId },
+    envelope: envelopeFromParsedValues(parsed.values),
+  };
+}
+
+function parseFindElementArgs(args) {
+  const { positionalValues, remaining } = parseLeadingPositionalArgs(args, 1);
+  const parsed = parseKeyValueArgs(remaining, {
+    "--selector": "value",
+    "--window-id": "value",
+    "--request-id": "value",
+    "--timeout-ms": "value",
+    "--session-id": "value",
+  });
+
+  const positionalSelector = positionalValues[0];
+  const optionSelector = parsed.values["--selector"];
+  const selector = optionSelector ?? positionalSelector;
+  if (!selector) {
+    throw new Error("Usage: looksy find-element <selector> [--window-id <id>] [--request-id <id>] [--timeout-ms <ms>]");
+  }
+
+  if (optionSelector && positionalSelector && optionSelector !== positionalSelector) {
+    throw new Error("Conflicting selectors provided via positional argument and --selector.");
+  }
+
+  return {
+    payload: compactObject({
+      selector,
+      windowId: parsed.values["--window-id"],
+    }),
+    envelope: envelopeFromParsedValues(parsed.values),
+  };
+}
+
+function parseInvokeElementArgs(args) {
+  const { positionalValues, remaining } = parseLeadingPositionalArgs(args, 2);
+  const parsed = parseKeyValueArgs(remaining, {
+    "--element-id": "value",
+    "--action": "value",
+    "--request-id": "value",
+    "--timeout-ms": "value",
+    "--session-id": "value",
+  });
+
+  const positionalElementId = positionalValues[0];
+  const positionalAction = positionalValues[1];
+  const optionElementId = parsed.values["--element-id"];
+  const optionAction = parsed.values["--action"];
+  const elementId = optionElementId ?? positionalElementId;
+  const action = optionAction ?? positionalAction;
+  if (!elementId || !action) {
+    throw new Error(
+      "Usage: looksy invoke-element <element-id> <press|focus|expand|collapse> [--request-id <id>] [--timeout-ms <ms>]",
+    );
+  }
+
+  if (optionElementId && positionalElementId && optionElementId !== positionalElementId) {
+    throw new Error("Conflicting element IDs provided via positional argument and --element-id.");
+  }
+
+  if (optionAction && positionalAction && optionAction !== positionalAction) {
+    throw new Error("Conflicting actions provided via positional argument and --action.");
+  }
+
+  assertElementAction(action);
+
+  return {
+    payload: {
+      elementId,
+      action,
+    },
+    envelope: envelopeFromParsedValues(parsed.values),
+  };
+}
+
+function parseSetElementValueArgs(args) {
+  const { positionalValues, remaining } = parseLeadingPositionalArgs(args, 2);
+  const parsed = parseKeyValueArgs(remaining, {
+    "--element-id": "value",
+    "--value": "value",
+    "--request-id": "value",
+    "--timeout-ms": "value",
+    "--session-id": "value",
+  });
+
+  const positionalElementId = positionalValues[0];
+  const positionalValue = positionalValues[1];
+  const optionElementId = parsed.values["--element-id"];
+  const optionValue = parsed.values["--value"];
+  const elementId = optionElementId ?? positionalElementId;
+  const value = optionValue ?? positionalValue;
+  if (!elementId || value === undefined) {
+    throw new Error("Usage: looksy set-element-value <element-id> <value> [--request-id <id>] [--timeout-ms <ms>]");
+  }
+
+  if (optionElementId && positionalElementId && optionElementId !== positionalElementId) {
+    throw new Error("Conflicting element IDs provided via positional argument and --element-id.");
+  }
+
+  if (optionValue !== undefined && positionalValue !== undefined && optionValue !== positionalValue) {
+    throw new Error("Conflicting values provided via positional argument and --value.");
+  }
+
+  return {
+    payload: {
+      elementId,
+      value,
+    },
+    envelope: envelopeFromParsedValues(parsed.values),
+  };
+}
+
+function parseLeadingPositionalArgs(args, maxCount) {
+  const positionalValues = [];
+  let index = 0;
+
+  while (index < args.length && positionalValues.length < maxCount && !args[index].startsWith("--")) {
+    positionalValues.push(args[index]);
+    index += 1;
+  }
+
+  return {
+    positionalValues,
+    remaining: args.slice(index),
+  };
 }
 
 function parseGenericCommandArgs(args) {
@@ -419,6 +598,13 @@ function parseInteger(value, fallback) {
   return parsed;
 }
 
+function assertElementAction(value) {
+  const allowed = new Set(["press", "focus", "expand", "collapse"]);
+  if (!allowed.has(value)) {
+    throw new Error(`--action must be one of: ${[...allowed].join(", ")}`);
+  }
+}
+
 function stripTrailingSlash(value) {
   return value.endsWith("/") ? value.slice(0, -1) : value;
 }
@@ -483,8 +669,13 @@ Usage:
   looksy [global options] handshake [options]
   looksy [global options] health [options]
   looksy [global options] capabilities [options]
+  looksy [global options] metrics [options]
   looksy [global options] screenshot [options]
   looksy [global options] windows list [options]
+  looksy [global options] focus-window <window-id> [options]
+  looksy [global options] find-element <selector> [options]
+  looksy [global options] invoke-element <element-id> <action> [options]
+  looksy [global options] set-element-value <element-id> <value> [options]
   looksy [global options] command <type> [options]
 
 Global options:
@@ -503,7 +694,7 @@ handshake options:
   --capabilities <csv|json>    Requested capabilities list
   --auth-token <token>         Auth token for handshake body
 
-command envelope options (supported by health/capabilities/screenshot/windows list/command):
+command envelope options (supported by health/capabilities/metrics/screenshot/windows list/focus-window/find-element/invoke-element/set-element-value/command):
   --session-id <id>            Override global session ID for this command
   --request-id <id>            Override request ID (default: generated UUID)
   --timeout-ms <ms>            Host command timeout
@@ -518,8 +709,37 @@ windows list options:
   --include-minimized [true|false]
   --desktop-only [true|false]
 
+focus-window options:
+  positional: <window-id>      Window identifier to focus
+  --window-id <id>             Alternative to positional window-id
+
+find-element options:
+  positional: <selector>       Selector to locate
+  --selector <selector>        Alternative to positional selector
+  --window-id <id>             Limit search to a specific window
+
+invoke-element options:
+  positional: <element-id> <action>
+  --element-id <id>            Alternative to positional element-id
+  --action <value>             One of press|focus|expand|collapse
+
+set-element-value options:
+  positional: <element-id> <value>
+  --element-id <id>            Alternative to positional element-id
+  --value <text>               Alternative to positional value
+
 generic command options:
   --payload <json-object>      Additional fields merged into command payload
+
+Examples:
+  looksy --token token-fixture-valid handshake --client-name ci-smoke --client-version 1.0.0
+  looksy --session-id <SESSION_ID> --json metrics
+  looksy --session-id <SESSION_ID> windows list --include-minimized
+  looksy --session-id <SESSION_ID> focus-window mac-main --json
+  looksy --session-id <SESSION_ID> find-element "button.save" --window-id mac-main --json
+  looksy --session-id <SESSION_ID> invoke-element mac-btn-save press --json
+  looksy --session-id <SESSION_ID> set-element-value mac-input-search "hello world" --json
+  looksy --session-id <SESSION_ID> command app.focusWindow --payload '{"windowId":"mac-main"}' --json
 `;
 
   process.stdout.write(help.trimStart());
