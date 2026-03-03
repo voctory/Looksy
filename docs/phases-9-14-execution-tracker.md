@@ -2,6 +2,9 @@
 
 This tracker is the operational checklist for migration phases 9 through 14.
 
+Related gap plan:
+- `docs/superset-gap-remediation-plan.md` tracks technical blockers that must be resolved before phases 12-14 default-on and legacy-removal goals are realistic.
+
 ## Phase 9: Integrate OpenClaw Behind Flag
 
 Acceptance criteria:
