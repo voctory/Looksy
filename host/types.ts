@@ -31,4 +31,5 @@ export interface SessionRecord {
   protocolVersion: string;
   client: HandshakeRequest["client"];
   issuedAt: string;
+  expiresAt?: string;
 }

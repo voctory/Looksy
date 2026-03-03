@@ -58,6 +58,7 @@ interface HostCoreBaseOptions {
   adapter: HostAdapter;
   policy?: CommandPolicy;
   defaultTimeoutMs?: number;
+  sessionTtlMs?: number;
   maxScreenshotArtifacts?: number;
   now?: () => Date;
   sessionIdFactory?: () => string;
@@ -81,6 +82,7 @@ export class HostCore {
   private readonly authTokens = new Map<string, StoredAuthToken>();
   private readonly policy: CommandPolicy;
   private readonly defaultTimeoutMs: number;
+  private readonly sessionTtlMs?: number;
   private readonly maxScreenshotArtifacts: number;
   private readonly now: () => Date;
   private readonly sessionIdFactory: () => string;
@@ -93,6 +95,7 @@ export class HostCore {
     this.adapter = options.adapter;
     this.policy = options.policy ?? new AllowAllPolicy();
     this.defaultTimeoutMs = options.defaultTimeoutMs ?? 10_000;
+    this.sessionTtlMs = normalizeSessionTtlMs(options.sessionTtlMs);
     this.maxScreenshotArtifacts = normalizeMaxScreenshotArtifacts(options.maxScreenshotArtifacts);
     this.now = options.now ?? (() => new Date());
     this.sessionIdFactory = options.sessionIdFactory ?? randomUUID;
@@ -174,12 +177,15 @@ export class HostCore {
       : [...capabilities];
 
     const sessionId = this.sessionIdFactory();
-    const issuedAt = this.now().toISOString();
+    const now = this.now();
+    const issuedAt = now.toISOString();
+    const expiresAt = this.sessionTtlMs !== undefined ? new Date(now.getTime() + this.sessionTtlMs).toISOString() : undefined;
     this.sessions.set(sessionId, {
       sessionId,
       protocolVersion: request.protocolVersion,
       client: request.client,
       issuedAt,
+      ...(expiresAt ? { expiresAt } : {}),
     });
 
     return {
@@ -196,17 +202,20 @@ export class HostCore {
   }
 
   async command(input: unknown): Promise<CommandResultEnvelope> {
+    const startedAtMs = Date.now();
     const parsed = CommandEnvelopeSchema.safeParse(input);
     if (!parsed.success) {
       const unknownCommand = parsed.error.issues.some(
         (issue) => issue.path.join(".") === "command.type" && issue.code === "invalid_union_discriminator",
       );
+      const errorCode: ErrorCode = unknownCommand ? "UNKNOWN_COMMAND" : "VALIDATION_FAILED";
+      this.recordCommandFailure(getCommandTypeFromUnknown(input), startedAtMs, errorCode);
       return {
         protocolVersion: PROTOCOL_VERSION,
         requestId: getRequestIdFromUnknown(input),
         ok: false,
         error: createProtocolError(
-          unknownCommand ? "UNKNOWN_COMMAND" : "VALIDATION_FAILED",
+          errorCode,
           unknownCommand ? "Unknown command type" : "Invalid command envelope",
           {
             issues: parsed.error.issues,
@@ -217,20 +226,39 @@ export class HostCore {
 
     const envelope = parsed.data;
     if (!isSupportedProtocolVersion(envelope.protocolVersion)) {
-      return this.commandError(envelope.requestId, "UNSUPPORTED_VERSION", "Unsupported protocol version", {
-        received: envelope.protocolVersion,
-        supported: [...SUPPORTED_PROTOCOL_VERSIONS],
+      return this.commandErrorWithMetrics({
+        requestId: envelope.requestId,
+        commandType: envelope.command.type,
+        startedAtMs,
+        code: "UNSUPPORTED_VERSION",
+        message: "Unsupported protocol version",
+        details: {
+          received: envelope.protocolVersion,
+          supported: [...SUPPORTED_PROTOCOL_VERSIONS],
+        },
       });
     }
 
-    const session = this.sessions.get(envelope.sessionId);
+    const session = this.getActiveSession(envelope.sessionId);
     if (!session) {
-      return this.commandError(envelope.requestId, "AUTH_FAILED", "Unknown or expired session");
+      return this.commandErrorWithMetrics({
+        requestId: envelope.requestId,
+        commandType: envelope.command.type,
+        startedAtMs,
+        code: "AUTH_FAILED",
+        message: "Unknown or expired session",
+      });
     }
 
     const policyDecision = this.policy.evaluate(envelope.command, session);
     if (!policyDecision.allowed) {
-      return this.commandError(envelope.requestId, "POLICY_DENIED", policyDecision.reason ?? "Command denied");
+      return this.commandErrorWithMetrics({
+        requestId: envelope.requestId,
+        commandType: envelope.command.type,
+        startedAtMs,
+        code: "POLICY_DENIED",
+        message: policyDecision.reason ?? "Command denied",
+      });
     }
 
     if (envelope.command.type === "control.cancel") {
@@ -243,11 +271,17 @@ export class HostCore {
     }
 
     if (envelope.command.type === "observability.getMetrics") {
-      return this.handleGetMetricsCommand(envelope.requestId);
+      return this.handleGetMetricsCommand(envelope.requestId, startedAtMs);
     }
 
     if (this.inFlight.has(envelope.requestId)) {
-      return this.commandError(envelope.requestId, "VALIDATION_FAILED", "Duplicate requestId is already in-flight");
+      return this.commandErrorWithMetrics({
+        requestId: envelope.requestId,
+        commandType: envelope.command.type,
+        startedAtMs,
+        code: "VALIDATION_FAILED",
+        message: "Duplicate requestId is already in-flight",
+      });
     }
 
     return this.executeAdapterCommand({
@@ -262,7 +296,7 @@ export class HostCore {
   }): { bytes: Buffer; mimeType: string; capturedAt: string } | null {
     const artifactId = params.artifactId.trim();
     const sessionId = params.sessionId.trim();
-    if (!artifactId || !sessionId || !this.sessions.has(sessionId)) {
+    if (!artifactId || !sessionId || !this.getActiveSession(sessionId)) {
       return null;
     }
 
@@ -276,6 +310,35 @@ export class HostCore {
       mimeType: stored.mimeType,
       capturedAt: stored.capturedAt,
     };
+  }
+
+  private getActiveSession(sessionId: string): SessionRecord | undefined {
+    this.pruneExpiredSessions();
+    return this.sessions.get(sessionId);
+  }
+
+  private pruneExpiredSessions(referenceTime: Date = this.now()): number {
+    const referenceMs = referenceTime.getTime();
+    let removed = 0;
+    for (const [sessionId, session] of this.sessions.entries()) {
+      if (!session.expiresAt) {
+        continue;
+      }
+
+      const expiresAtMs = Date.parse(session.expiresAt);
+      if (!Number.isFinite(expiresAtMs)) {
+        this.sessions.delete(sessionId);
+        removed += 1;
+        continue;
+      }
+
+      if (expiresAtMs <= referenceMs) {
+        this.sessions.delete(sessionId);
+        removed += 1;
+      }
+    }
+
+    return removed;
   }
 
   private initializeAuthTokens(options: HostCoreOptions): void {
@@ -302,11 +365,17 @@ export class HostCore {
     return this.authTokens.has(token);
   }
 
-  private handleGetMetricsCommand(requestId: string): CommandResultEnvelope {
+  private handleGetMetricsCommand(requestId: string, startedAtMs: number): CommandResultEnvelope {
     try {
       const snapshot = this.metrics.snapshot?.();
       if (!snapshot) {
-        return this.commandError(requestId, "INTERNAL", "Metrics snapshot unavailable");
+        return this.commandErrorWithMetrics({
+          requestId,
+          commandType: "observability.getMetrics",
+          startedAtMs,
+          code: "INTERNAL",
+          message: "Metrics snapshot unavailable",
+        });
       }
 
       return {
@@ -319,7 +388,13 @@ export class HostCore {
         },
       };
     } catch {
-      return this.commandError(requestId, "INTERNAL", "Metrics snapshot unavailable");
+      return this.commandErrorWithMetrics({
+        requestId,
+        commandType: "observability.getMetrics",
+        startedAtMs,
+        code: "INTERNAL",
+        message: "Metrics snapshot unavailable",
+      });
     }
   }
 
@@ -489,6 +564,23 @@ export class HostCore {
       error: createProtocolError(code, message, details),
     };
   }
+
+  private commandErrorWithMetrics(params: {
+    requestId: string;
+    commandType: string;
+    startedAtMs: number;
+    code: ErrorCode;
+    message: string;
+    details?: Record<string, unknown>;
+  }): CommandErrorEnvelope {
+    const envelope = this.commandError(params.requestId, params.code, params.message, params.details);
+    this.recordCommandFailure(params.commandType, params.startedAtMs, params.code);
+    return envelope;
+  }
+
+  private recordCommandFailure(commandType: string, startedAtMs: number, errorCode: ErrorCode): void {
+    this.metrics.recordFailure(commandType, Date.now() - startedAtMs, this.adapter.platform, errorCode);
+  }
 }
 
 function normalizeAuthTokenInput(tokenInput: HostAuthTokenInput): { token: string; expiresAtMs?: number } {
@@ -527,6 +619,18 @@ function normalizeMaxScreenshotArtifacts(value: number | undefined): number {
   return Math.max(1, Math.floor(value));
 }
 
+function normalizeSessionTtlMs(value: number | undefined): number | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
+    throw new Error("sessionTtlMs must be a positive finite number when provided");
+  }
+
+  return Math.max(1, Math.floor(value));
+}
+
 function buildArtifactUrl(artifactId: string, sessionId: string): string {
   return `/v1/artifacts/${encodeURIComponent(artifactId)}?sessionId=${encodeURIComponent(sessionId)}`;
 }
@@ -536,6 +640,20 @@ function getRequestIdFromUnknown(input: unknown): string {
     const maybeRequestId = (input as Record<string, unknown>).requestId;
     if (typeof maybeRequestId === "string" && maybeRequestId.length > 0) {
       return maybeRequestId;
+    }
+  }
+
+  return "unknown";
+}
+
+function getCommandTypeFromUnknown(input: unknown): string {
+  if (typeof input === "object" && input && "command" in input) {
+    const command = (input as Record<string, unknown>).command;
+    if (typeof command === "object" && command && "type" in command) {
+      const commandType = (command as Record<string, unknown>).type;
+      if (typeof commandType === "string" && commandType.length > 0) {
+        return commandType;
+      }
     }
   }
 

@@ -67,6 +67,74 @@ describe("HostCore", () => {
     }
   });
 
+  it("expires sessions when session ttl elapses", async () => {
+    let now = new Date("2026-03-03T00:00:00.000Z");
+    const core = new HostCore({
+      adapter: new MacOSAdapter(),
+      authToken: AUTH_TOKEN,
+      sessionTtlMs: 1_000,
+      now: () => now,
+      sessionIdFactory: () => "session-expiring",
+    });
+
+    const sessionId = await createSession(core, "hs-expiring");
+    const beforeExpiry = await core.command({
+      protocolVersion: PROTOCOL_VERSION,
+      requestId: "cmd-before-expiry",
+      sessionId,
+      command: {
+        type: "health.ping",
+      },
+    });
+    expect(beforeExpiry.ok).toBe(true);
+
+    now = new Date("2026-03-03T00:00:02.000Z");
+    const expired = await core.command({
+      protocolVersion: PROTOCOL_VERSION,
+      requestId: "cmd-after-expiry",
+      sessionId,
+      command: {
+        type: "health.ping",
+      },
+    });
+    expect(expired.ok).toBe(false);
+    if (!expired.ok) {
+      expect(expired.error.code).toBe("AUTH_FAILED");
+    }
+  });
+
+  it("denies screenshot artifact reads after session expiry", async () => {
+    let now = new Date("2026-03-03T00:00:00.000Z");
+    const core = new HostCore({
+      adapter: new MacOSAdapter(),
+      authToken: AUTH_TOKEN,
+      sessionTtlMs: 1_000,
+      now: () => now,
+      sessionIdFactory: () => "session-artifact-expiring",
+    });
+
+    const sessionId = await createSession(core, "hs-artifact-expiring");
+    const response = await core.command({
+      protocolVersion: PROTOCOL_VERSION,
+      requestId: "cmd-artifact-expiring",
+      sessionId,
+      command: {
+        type: "screen.capture",
+      },
+    });
+    expect(response.ok).toBe(true);
+    if (!response.ok || response.result.type !== "screen.captured") {
+      return;
+    }
+
+    now = new Date("2026-03-03T00:00:02.000Z");
+    const denied = core.readScreenshotArtifact({
+      artifactId: response.result.artifactId,
+      sessionId,
+    });
+    expect(denied).toBeNull();
+  });
+
   it("accepts handshake from any configured active token", () => {
     const core = new HostCore({
       adapter: new MacOSAdapter(),
@@ -331,6 +399,80 @@ describe("HostCore", () => {
         expect(metricsResponse.result.snapshot.latencyMs.sampleCount).toBe(2);
       }
     }
+  });
+
+  it("records non-adapter command failures in metrics", async () => {
+    const core = new HostCore({
+      adapter: new MacOSAdapter(),
+      authToken: AUTH_TOKEN,
+      policy: new StaticCommandPolicy({ deny: ["input.click"] }),
+    });
+
+    const sessionId = await createSession(core, "hs-failure-metrics");
+
+    const policyDeniedResponse = await core.command({
+      protocolVersion: PROTOCOL_VERSION,
+      requestId: "cmd-policy-denied",
+      sessionId,
+      command: {
+        type: "input.click",
+        button: "left",
+      },
+    });
+    expect(policyDeniedResponse.ok).toBe(false);
+    if (!policyDeniedResponse.ok) {
+      expect(policyDeniedResponse.error.code).toBe("POLICY_DENIED");
+    }
+
+    const authFailedResponse = await core.command({
+      protocolVersion: PROTOCOL_VERSION,
+      requestId: "cmd-auth-failed",
+      sessionId: "missing-session",
+      command: {
+        type: "health.ping",
+      },
+    });
+    expect(authFailedResponse.ok).toBe(false);
+    if (!authFailedResponse.ok) {
+      expect(authFailedResponse.error.code).toBe("AUTH_FAILED");
+    }
+
+    const unknownCommandResponse = await core.command({
+      protocolVersion: PROTOCOL_VERSION,
+      requestId: "cmd-unknown-command",
+      sessionId,
+      command: {
+        type: "legacy.screenshot",
+      },
+    });
+    expect(unknownCommandResponse.ok).toBe(false);
+    if (!unknownCommandResponse.ok) {
+      expect(unknownCommandResponse.error.code).toBe("UNKNOWN_COMMAND");
+    }
+
+    const metricsResponse = await core.command({
+      protocolVersion: PROTOCOL_VERSION,
+      requestId: "cmd-failure-metrics",
+      sessionId,
+      command: {
+        type: "observability.getMetrics",
+      },
+    });
+
+    expect(metricsResponse.ok).toBe(true);
+    if (!metricsResponse.ok || metricsResponse.result.type !== "observability.metrics") {
+      return;
+    }
+
+    expect(metricsResponse.result.snapshot.successCount).toBe(0);
+    expect(metricsResponse.result.snapshot.failureCount).toBe(3);
+    expect(metricsResponse.result.snapshot.failureByCommand["input.click"]).toBe(1);
+    expect(metricsResponse.result.snapshot.failureByCommand["health.ping"]).toBe(1);
+    expect(metricsResponse.result.snapshot.failureByCommand["legacy.screenshot"]).toBe(1);
+    expect(metricsResponse.result.snapshot.failureByCode.POLICY_DENIED).toBe(1);
+    expect(metricsResponse.result.snapshot.failureByCode.AUTH_FAILED).toBe(1);
+    expect(metricsResponse.result.snapshot.failureByCode.UNKNOWN_COMMAND).toBe(1);
+    expect(metricsResponse.result.snapshot.latencyMs.sampleCount).toBe(3);
   });
 
   it("returns INTERNAL when metrics snapshots are unavailable", async () => {
