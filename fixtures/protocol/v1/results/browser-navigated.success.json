@@ -1,0 +1,11 @@
+{
+  "ok": true,
+  "protocolVersion": "1.0.0",
+  "requestId": "cmd-browser-navigate-001",
+  "result": {
+    "type": "browser.navigated",
+    "url": "https://example.com/conformance",
+    "title": "$any:nonEmptyString",
+    "navigatedAt": "$any:nonEmptyString"
+  }
+}

@@ -47,6 +47,30 @@ describe("protocol schemas", () => {
     expect(parsed.success).toBe(true);
   });
 
+  it("accepts browser command envelopes", () => {
+    const navigate = CommandEnvelopeSchema.safeParse({
+      protocolVersion: PROTOCOL_VERSION,
+      requestId: "cmd-browser-navigate",
+      sessionId: "session-1",
+      command: {
+        type: "browser.navigate",
+        url: "https://example.com",
+      },
+    });
+    expect(navigate.success).toBe(true);
+
+    const traceStart = CommandEnvelopeSchema.safeParse({
+      protocolVersion: PROTOCOL_VERSION,
+      requestId: "cmd-browser-trace-start",
+      sessionId: "session-1",
+      command: {
+        type: "browser.trace.start",
+        traceName: "smoke",
+      },
+    });
+    expect(traceStart.success).toBe(true);
+  });
+
   it("validates observability metrics result payloads", () => {
     const parsed = CommandResultPayloadSchema.safeParse({
       type: "observability.metrics",
@@ -84,5 +108,25 @@ describe("protocol schemas", () => {
     });
 
     expect(parsed.success).toBe(true);
+  });
+
+  it("validates browser result payloads", () => {
+    const snapshot = CommandResultPayloadSchema.safeParse({
+      type: "browser.snapshot",
+      url: "https://example.com",
+      title: "example.com",
+      html: "<html></html>",
+      capturedAt: "2026-03-03T00:00:00.000Z",
+    });
+    expect(snapshot.success).toBe(true);
+
+    const traceStop = CommandResultPayloadSchema.safeParse({
+      type: "browser.traceStopped",
+      traceId: "trace-1",
+      stoppedAt: "2026-03-03T00:00:01.000Z",
+      durationMs: 1250,
+      eventCount: 4,
+    });
+    expect(traceStop.success).toBe(true);
   });
 });

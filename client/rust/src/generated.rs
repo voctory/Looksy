@@ -3,6 +3,12 @@
 pub mod command_ids {
     pub const APP_FOCUS_WINDOW: &str = "app.focusWindow";
     pub const APP_LIST_WINDOWS: &str = "app.listWindows";
+    pub const BROWSER_CONSOLE: &str = "browser.console";
+    pub const BROWSER_NAVIGATE: &str = "browser.navigate";
+    pub const BROWSER_PDF: &str = "browser.pdf";
+    pub const BROWSER_SNAPSHOT: &str = "browser.snapshot";
+    pub const BROWSER_TRACE_START: &str = "browser.trace.start";
+    pub const BROWSER_TRACE_STOP: &str = "browser.trace.stop";
     pub const CONTROL_CANCEL: &str = "control.cancel";
     pub const ELEMENT_FIND: &str = "element.find";
     pub const ELEMENT_INVOKE: &str = "element.invoke";
@@ -18,6 +24,12 @@ pub mod command_ids {
     pub const ALL: &[&str] = &[
         APP_FOCUS_WINDOW,
         APP_LIST_WINDOWS,
+        BROWSER_CONSOLE,
+        BROWSER_NAVIGATE,
+        BROWSER_PDF,
+        BROWSER_SNAPSHOT,
+        BROWSER_TRACE_START,
+        BROWSER_TRACE_STOP,
         CONTROL_CANCEL,
         ELEMENT_FIND,
         ELEMENT_INVOKE,

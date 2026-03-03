@@ -3,6 +3,12 @@
   "commandTypes": [
     "app.focusWindow",
     "app.listWindows",
+    "browser.console",
+    "browser.navigate",
+    "browser.pdf",
+    "browser.snapshot",
+    "browser.trace.start",
+    "browser.trace.stop",
     "control.cancel",
     "element.find",
     "element.invoke",

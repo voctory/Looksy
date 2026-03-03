@@ -48,6 +48,7 @@ export type WindowInfo = z.infer<typeof WindowInfoSchema>;
 export const MouseButtonSchema = z.enum(["left", "right", "middle"]);
 export const ImageFormatSchema = z.enum(["png", "jpeg"]);
 export const ElementActionSchema = z.enum(["press", "focus", "expand", "collapse"]);
+export const BrowserConsoleLevelSchema = z.enum(["debug", "info", "warn", "error"]);
 
 const MetricsCounterRecordSchema = z.record(z.string().min(1), z.number().int().nonnegative());
 
@@ -138,6 +139,52 @@ const AppFocusWindowCommandSchema = z
   })
   .strict();
 
+const BrowserNavigateCommandSchema = z
+  .object({
+    type: z.literal("browser.navigate"),
+    url: z.string().min(1),
+    waitUntil: z.enum(["load", "domcontentloaded", "networkidle"]).optional(),
+  })
+  .strict();
+
+const BrowserSnapshotCommandSchema = z
+  .object({
+    type: z.literal("browser.snapshot"),
+    includeHtml: z.boolean().optional(),
+    maxLength: z.number().int().positive().max(1_000_000).optional(),
+  })
+  .strict();
+
+const BrowserPdfCommandSchema = z
+  .object({
+    type: z.literal("browser.pdf"),
+    landscape: z.boolean().optional(),
+    pageRanges: z.string().min(1).optional(),
+  })
+  .strict();
+
+const BrowserConsoleCommandSchema = z
+  .object({
+    type: z.literal("browser.console"),
+    level: BrowserConsoleLevelSchema.optional(),
+    limit: z.number().int().positive().max(500).optional(),
+  })
+  .strict();
+
+const BrowserTraceStartCommandSchema = z
+  .object({
+    type: z.literal("browser.trace.start"),
+    traceName: z.string().min(1).max(128).optional(),
+  })
+  .strict();
+
+const BrowserTraceStopCommandSchema = z
+  .object({
+    type: z.literal("browser.trace.stop"),
+    traceId: z.string().min(1).max(128).optional(),
+  })
+  .strict();
+
 const ElementFindCommandSchema = z
   .object({
     type: z.literal("element.find"),
@@ -179,6 +226,12 @@ export const CommandPayloadSchema = z.discriminatedUnion("type", [
   InputTypeTextCommandSchema,
   AppListWindowsCommandSchema,
   AppFocusWindowCommandSchema,
+  BrowserNavigateCommandSchema,
+  BrowserSnapshotCommandSchema,
+  BrowserPdfCommandSchema,
+  BrowserConsoleCommandSchema,
+  BrowserTraceStartCommandSchema,
+  BrowserTraceStopCommandSchema,
   ElementFindCommandSchema,
   ElementInvokeCommandSchema,
   ElementSetValueCommandSchema,
@@ -259,6 +312,67 @@ const AppWindowFocusedResultSchema = z
   })
   .strict();
 
+const BrowserNavigatedResultSchema = z
+  .object({
+    type: z.literal("browser.navigated"),
+    url: z.string().min(1),
+    title: z.string().min(1),
+    navigatedAt: z.string().datetime(),
+  })
+  .strict();
+
+const BrowserSnapshotResultSchema = z
+  .object({
+    type: z.literal("browser.snapshot"),
+    url: z.string().min(1),
+    title: z.string().min(1),
+    html: z.string().optional(),
+    capturedAt: z.string().datetime(),
+  })
+  .strict();
+
+const BrowserPdfResultSchema = z
+  .object({
+    type: z.literal("browser.pdf"),
+    mimeType: z.literal("application/pdf"),
+    dataBase64: z.string().min(1),
+    generatedAt: z.string().datetime(),
+  })
+  .strict();
+
+const BrowserConsoleEntrySchema = z
+  .object({
+    level: BrowserConsoleLevelSchema,
+    text: z.string(),
+    timestamp: z.string().datetime(),
+  })
+  .strict();
+
+const BrowserConsoleResultSchema = z
+  .object({
+    type: z.literal("browser.console"),
+    entries: z.array(BrowserConsoleEntrySchema),
+  })
+  .strict();
+
+const BrowserTraceStartedResultSchema = z
+  .object({
+    type: z.literal("browser.traceStarted"),
+    traceId: z.string().min(1),
+    startedAt: z.string().datetime(),
+  })
+  .strict();
+
+const BrowserTraceStoppedResultSchema = z
+  .object({
+    type: z.literal("browser.traceStopped"),
+    traceId: z.string().min(1),
+    stoppedAt: z.string().datetime(),
+    durationMs: z.number().finite().nonnegative(),
+    eventCount: z.number().int().nonnegative(),
+  })
+  .strict();
+
 const ElementFoundResultSchema = z
   .object({
     type: z.literal("element.found"),
@@ -303,6 +417,12 @@ export const CommandResultPayloadSchema = z.discriminatedUnion("type", [
   InputTypedResultSchema,
   AppWindowsListedResultSchema,
   AppWindowFocusedResultSchema,
+  BrowserNavigatedResultSchema,
+  BrowserSnapshotResultSchema,
+  BrowserPdfResultSchema,
+  BrowserConsoleResultSchema,
+  BrowserTraceStartedResultSchema,
+  BrowserTraceStoppedResultSchema,
   ElementFoundResultSchema,
   ElementInvokedResultSchema,
   ElementValueSetResultSchema,

@@ -1,0 +1,9 @@
+{
+  "protocolVersion": "1.0.0",
+  "requestId": "cmd-browser-navigate-001",
+  "sessionId": "$session",
+  "command": {
+    "type": "browser.navigate",
+    "url": "https://example.com/conformance"
+  }
+}

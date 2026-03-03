@@ -7,6 +7,12 @@ public static class ProtocolCommandIds
 {
   public const string AppFocusWindow = "app.focusWindow";
   public const string AppListWindows = "app.listWindows";
+  public const string BrowserConsole = "browser.console";
+  public const string BrowserNavigate = "browser.navigate";
+  public const string BrowserPdf = "browser.pdf";
+  public const string BrowserSnapshot = "browser.snapshot";
+  public const string BrowserTraceStart = "browser.trace.start";
+  public const string BrowserTraceStop = "browser.trace.stop";
   public const string ControlCancel = "control.cancel";
   public const string ElementFind = "element.find";
   public const string ElementInvoke = "element.invoke";
@@ -23,6 +29,12 @@ public static class ProtocolCommandIds
   {
     AppFocusWindow,
     AppListWindows,
+    BrowserConsole,
+    BrowserNavigate,
+    BrowserPdf,
+    BrowserSnapshot,
+    BrowserTraceStart,
+    BrowserTraceStop,
     ControlCancel,
     ElementFind,
     ElementInvoke,

@@ -337,6 +337,106 @@ describe("HostCore", () => {
     expect(denied).toBeNull();
   });
 
+  it("executes browser command family with trace lifecycle", async () => {
+    const core = new HostCore({
+      adapter: new MacOSAdapter(),
+      authToken: AUTH_TOKEN,
+    });
+
+    const sessionId = await createSession(core, "hs-browser");
+
+    const traceStarted = await core.command({
+      protocolVersion: PROTOCOL_VERSION,
+      requestId: "cmd-browser-trace-start",
+      sessionId,
+      command: {
+        type: "browser.trace.start",
+        traceName: "smoke-trace",
+      },
+    });
+    expect(traceStarted.ok).toBe(true);
+    if (!traceStarted.ok || traceStarted.result.type !== "browser.traceStarted") {
+      return;
+    }
+
+    const navigate = await core.command({
+      protocolVersion: PROTOCOL_VERSION,
+      requestId: "cmd-browser-navigate",
+      sessionId,
+      command: {
+        type: "browser.navigate",
+        url: "https://example.com/dashboard",
+      },
+    });
+    expect(navigate.ok).toBe(true);
+    if (!navigate.ok || navigate.result.type !== "browser.navigated") {
+      return;
+    }
+    expect(navigate.result.url).toBe("https://example.com/dashboard");
+
+    const snapshot = await core.command({
+      protocolVersion: PROTOCOL_VERSION,
+      requestId: "cmd-browser-snapshot",
+      sessionId,
+      command: {
+        type: "browser.snapshot",
+        maxLength: 80,
+      },
+    });
+    expect(snapshot.ok).toBe(true);
+    if (!snapshot.ok || snapshot.result.type !== "browser.snapshot") {
+      return;
+    }
+    expect(typeof snapshot.result.html).toBe("string");
+    expect((snapshot.result.html ?? "").length).toBeLessThanOrEqual(80);
+
+    const pdf = await core.command({
+      protocolVersion: PROTOCOL_VERSION,
+      requestId: "cmd-browser-pdf",
+      sessionId,
+      command: {
+        type: "browser.pdf",
+        landscape: true,
+      },
+    });
+    expect(pdf.ok).toBe(true);
+    if (!pdf.ok || pdf.result.type !== "browser.pdf") {
+      return;
+    }
+    expect(pdf.result.mimeType).toBe("application/pdf");
+    expect(Buffer.from(pdf.result.dataBase64, "base64").toString("utf8")).toContain("looksy-browser-pdf:macos");
+
+    const consoleOutput = await core.command({
+      protocolVersion: PROTOCOL_VERSION,
+      requestId: "cmd-browser-console",
+      sessionId,
+      command: {
+        type: "browser.console",
+        limit: 10,
+      },
+    });
+    expect(consoleOutput.ok).toBe(true);
+    if (!consoleOutput.ok || consoleOutput.result.type !== "browser.console") {
+      return;
+    }
+    expect(consoleOutput.result.entries.some((entry) => entry.text.includes("Navigated to"))).toBe(true);
+
+    const traceStopped = await core.command({
+      protocolVersion: PROTOCOL_VERSION,
+      requestId: "cmd-browser-trace-stop",
+      sessionId,
+      command: {
+        type: "browser.trace.stop",
+      },
+    });
+    expect(traceStopped.ok).toBe(true);
+    if (!traceStopped.ok || traceStopped.result.type !== "browser.traceStopped") {
+      return;
+    }
+    expect(traceStopped.result.traceId).toBe(traceStarted.result.traceId);
+    expect(traceStopped.result.eventCount).toBeGreaterThanOrEqual(4);
+  });
+
   it("returns a metrics snapshot through observability.getMetrics", async () => {
     const core = new HostCore({
       adapter: new MacOSAdapter({

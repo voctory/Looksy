@@ -138,6 +138,21 @@ function commandForType(type: CommandPayload["type"]): CommandPayload {
         type,
         windowId: "window-1",
       };
+    case "browser.navigate":
+      return {
+        type,
+        url: "https://example.com",
+      };
+    case "browser.snapshot":
+      return { type };
+    case "browser.pdf":
+      return { type };
+    case "browser.console":
+      return { type };
+    case "browser.trace.start":
+      return { type };
+    case "browser.trace.stop":
+      return { type };
     case "element.find":
       return {
         type,

@@ -23,6 +23,13 @@
       "tags": ["conformance", "command"]
     },
     {
+      "id": "command.browser-navigate.success",
+      "operation": "command",
+      "request": "commands/browser-navigate.request.json",
+      "expected": "results/browser-navigated.success.json",
+      "tags": ["conformance", "command", "browser"]
+    },
+    {
       "id": "handshake.auth-invalid-token",
       "operation": "handshake",
       "request": "handshake/client-hello.invalid-token.json",

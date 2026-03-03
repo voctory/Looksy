@@ -11,6 +11,12 @@ const WINDOWS_CAPABILITIES: readonly AdapterCommandPayload["type"][] = [
   "input.typeText",
   "app.listWindows",
   "app.focusWindow",
+  "browser.navigate",
+  "browser.snapshot",
+  "browser.pdf",
+  "browser.console",
+  "browser.trace.start",
+  "browser.trace.stop",
   "element.find",
   "element.invoke",
   "element.setValue",
@@ -22,6 +28,21 @@ export class WindowsAdapter implements HostAdapter {
   private readonly windows: WindowInfo[];
   private readonly elements: SimulatedElement[];
   private readonly elementValues = new Map<string, string>();
+  private browserUrl = "about:blank";
+  private browserTitle = "Looksy";
+  private readonly browserConsole: Array<{
+    level: "debug" | "info" | "warn" | "error";
+    text: string;
+    timestamp: string;
+  }> = [];
+  private readonly activeTraceBySession = new Map<
+    string,
+    {
+      traceId: string;
+      startedAtMs: number;
+      eventCount: number;
+    }
+  >();
 
   constructor(options: SimulatedAdapterOptions = {}) {
     this.delayMsByCommand = options.delayMsByCommand ?? {};
@@ -137,6 +158,92 @@ export class WindowsAdapter implements HostAdapter {
           focused: Boolean(existing),
         };
       }
+      case "browser.navigate": {
+        const navigatedAt = new Date().toISOString();
+        this.browserUrl = command.url;
+        this.browserTitle = deriveBrowserTitle(command.url);
+        this.pushBrowserConsoleEntry("info", `Navigated to ${command.url}`, navigatedAt);
+        this.recordTraceEvent(context.sessionId);
+        return {
+          type: "browser.navigated",
+          url: this.browserUrl,
+          title: this.browserTitle,
+          navigatedAt,
+        };
+      }
+      case "browser.snapshot": {
+        const capturedAt = new Date().toISOString();
+        this.pushBrowserConsoleEntry("debug", "Captured browser snapshot", capturedAt);
+        this.recordTraceEvent(context.sessionId);
+        const html = buildSnapshotHtml(this.browserTitle, this.browserUrl, this.platform, command.maxLength);
+        return {
+          type: "browser.snapshot",
+          url: this.browserUrl,
+          title: this.browserTitle,
+          capturedAt,
+          ...(command.includeHtml === false ? {} : { html }),
+        };
+      }
+      case "browser.pdf": {
+        const generatedAt = new Date().toISOString();
+        this.pushBrowserConsoleEntry("info", "Generated browser PDF", generatedAt);
+        this.recordTraceEvent(context.sessionId);
+        const dataBase64 = Buffer.from(
+          `looksy-browser-pdf:${this.platform}:${context.requestId}:${this.browserUrl}:${command.landscape ? "landscape" : "portrait"}:${command.pageRanges ?? "all"}`,
+          "utf8",
+        ).toString("base64");
+        return {
+          type: "browser.pdf",
+          mimeType: "application/pdf",
+          dataBase64,
+          generatedAt,
+        };
+      }
+      case "browser.console": {
+        const limit = command.limit ?? 50;
+        const entries = (command.level
+          ? this.browserConsole.filter((entry) => entry.level === command.level)
+          : this.browserConsole
+        ).slice(-limit);
+        this.recordTraceEvent(context.sessionId);
+        return {
+          type: "browser.console",
+          entries,
+        };
+      }
+      case "browser.trace.start": {
+        const startedAt = new Date().toISOString();
+        const traceId = `${this.platform}-${context.sessionId}-${context.requestId}`;
+        this.activeTraceBySession.set(context.sessionId, {
+          traceId,
+          startedAtMs: Date.now(),
+          eventCount: 0,
+        });
+        this.pushBrowserConsoleEntry("info", `Trace started (${command.traceName ?? traceId})`, startedAt);
+        return {
+          type: "browser.traceStarted",
+          traceId,
+          startedAt,
+        };
+      }
+      case "browser.trace.stop": {
+        const stoppedAt = new Date().toISOString();
+        const activeTrace = this.activeTraceBySession.get(context.sessionId);
+        if (activeTrace) {
+          this.activeTraceBySession.delete(context.sessionId);
+        }
+        const traceId = command.traceId ?? activeTrace?.traceId ?? `${this.platform}-${context.sessionId}-trace`;
+        const durationMs = Math.max(0, activeTrace ? Date.now() - activeTrace.startedAtMs : 0);
+        const eventCount = activeTrace?.eventCount ?? 0;
+        this.pushBrowserConsoleEntry("info", `Trace stopped (${traceId})`, stoppedAt);
+        return {
+          type: "browser.traceStopped",
+          traceId,
+          stoppedAt,
+          durationMs,
+          eventCount,
+        };
+      }
       case "element.find": {
         const element = this.elements.find(
           (candidate) =>
@@ -183,6 +290,42 @@ export class WindowsAdapter implements HostAdapter {
         return assertNever(command);
     }
   }
+
+  private pushBrowserConsoleEntry(
+    level: "debug" | "info" | "warn" | "error",
+    text: string,
+    timestamp: string,
+  ): void {
+    this.browserConsole.push({ level, text, timestamp });
+    if (this.browserConsole.length > 200) {
+      this.browserConsole.splice(0, this.browserConsole.length - 200);
+    }
+  }
+
+  private recordTraceEvent(sessionId: string): void {
+    const activeTrace = this.activeTraceBySession.get(sessionId);
+    if (activeTrace) {
+      activeTrace.eventCount += 1;
+    }
+  }
+}
+
+function deriveBrowserTitle(url: string): string {
+  try {
+    const parsed = new URL(url);
+    return parsed.hostname || url;
+  } catch {
+    return url;
+  }
+}
+
+function buildSnapshotHtml(title: string, url: string, platform: "windows", maxLength?: number): string {
+  const html = `<html><head><title>${title}</title></head><body><main data-platform="${platform}">${url}</main></body></html>`;
+  if (maxLength === undefined) {
+    return html;
+  }
+
+  return html.slice(0, maxLength);
 }
 
 function assertNever(value: never): never {
