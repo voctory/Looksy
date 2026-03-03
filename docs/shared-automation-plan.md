@@ -31,6 +31,8 @@ Deliverables now present:
 - CLI + SDK entry points for integration and diagnostics.
 - Fixture-driven conformance and regression coverage.
 - Architecture, quickstart, and release/rollback runbook docs.
+- Integration feature-flag embedding guide (`docs/integration-feature-flag-guide.md`).
+- Phases 9-14 execution tracker (`docs/phases-9-14-execution-tracker.md`).
 
 ## 1. Objective
 

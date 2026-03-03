@@ -25,3 +25,5 @@ See detailed docs:
 - `docs/quickstart.md`
 - `docs/release-rollback-runbook.md`
 - `docs/shared-automation-plan.md`
+- `docs/integration-feature-flag-guide.md`
+- `docs/phases-9-14-execution-tracker.md`

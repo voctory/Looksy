@@ -1,4 +1,10 @@
 import { postJson } from "./http.js";
+import {
+  createLegacyActionCompatibilityConfig,
+  resolveLegacyActionCommandType,
+  type LegacyActionCompatibilityConfig,
+  type LegacyActionCompatibilityOptions,
+} from "./compatibility.js";
 import type {
   CommandRequest,
   CommandResponse,
@@ -27,6 +33,7 @@ export interface LooksyClientOptions {
   fetchImpl?: typeof fetch;
   defaultHeaders?: Record<string, string>;
   commandTypes?: Partial<typeof DefaultCommandTypes>;
+  legacyActionCompatibility?: LegacyActionCompatibilityOptions;
 }
 
 export type HandshakeInput = Omit<HandshakeRequest, "requestId" | "authToken"> &
@@ -59,6 +66,7 @@ export class LooksyClient {
   private readonly fetchImpl?: typeof fetch;
   private readonly defaultHeaders?: Record<string, string>;
   private readonly commandTypes: typeof DefaultCommandTypes;
+  private readonly legacyActionCompatibility: LegacyActionCompatibilityConfig;
 
   private protocolVersion: string;
   private sessionId?: string;
@@ -74,6 +82,7 @@ export class LooksyClient {
       ...DefaultCommandTypes,
       ...(options.commandTypes ?? {}),
     };
+    this.legacyActionCompatibility = createLegacyActionCompatibilityConfig(options.legacyActionCompatibility);
   }
 
   public setSessionId(sessionId: string): void {
@@ -186,8 +195,20 @@ export class LooksyClient {
       requestId: request.requestId ?? createRequestId(),
       sessionId,
       timeoutMs: request.timeoutMs,
-      command: request.command,
+      command: this.normalizeCommandPayload(request.command),
     };
+  }
+
+  private normalizeCommandPayload<TCommand extends ExtensibleCommandPayload>(command: TCommand): TCommand {
+    const normalizedType = resolveLegacyActionCommandType(command.type, this.legacyActionCompatibility);
+    if (normalizedType === command.type) {
+      return command;
+    }
+
+    return {
+      ...command,
+      type: normalizedType,
+    } as TCommand;
   }
 }
 

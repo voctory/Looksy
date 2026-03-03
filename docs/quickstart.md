@@ -50,4 +50,8 @@ node cli/looksy.js --host http://127.0.0.1:4064 --token token-fixture-valid hand
 # run a command with the session id from handshake
 node cli/looksy.js --host http://127.0.0.1:4064 --session-id <SESSION_ID> health --json
 node cli/looksy.js --host http://127.0.0.1:4064 --session-id <SESSION_ID> windows list --json
+
+# generic command mode (protocol v1 command names)
+node cli/looksy.js --host http://127.0.0.1:4064 --session-id <SESSION_ID> command health.getCapabilities --json
+node cli/looksy.js --host http://127.0.0.1:4064 --session-id <SESSION_ID> command app.listWindows --json
 ```

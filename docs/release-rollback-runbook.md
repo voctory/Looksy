@@ -6,6 +6,8 @@
 - `npm test` is green.
 - `npm run typecheck` is green.
 - Feature flags/rollback toggles are defined in each consumer integration.
+- Consumer integrations follow `docs/integration-feature-flag-guide.md`.
+- Phases 9-14 status is current in `docs/phases-9-14-execution-tracker.md`.
 
 ## 2. Pre-Release Validation
 
