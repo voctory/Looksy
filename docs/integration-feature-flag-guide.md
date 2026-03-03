@@ -4,13 +4,14 @@ This guide defines a reversible integration pattern for embedding Looksy in cons
 
 ## 1. Required Flags
 
-Define three independent toggles in the consumer app:
+Define these toggles in the consumer app:
 
 | Flag | Default | Purpose |
 | --- | --- | --- |
 | `LOOKSY_INTEGRATION_ENABLED` | `false` | Master switch for routing automation through Looksy. |
 | `LOOKSY_ENABLE_LEGACY_ACTION_COMPAT` | `false` | Enables TS client-side legacy action name mapping to protocol v1 command names. |
 | `LOOKSY_FORCE_LEGACY_EXECUTION` | `false` | Emergency rollback toggle to force legacy execution path even when integration is enabled. |
+| `LOOKSY_FALLBACK_TO_LEGACY_ON_ERROR` | `false` | Optional automatic fallback to legacy when Looksy execution throws (transport/runtime failure path). |
 
 ## 2. Command Name Baseline (Protocol v1)
 
@@ -32,10 +33,16 @@ Use protocol v1 command names as source of truth:
 ## 3. Integration Routing Pattern
 
 ```ts
-import { LooksyClient } from "@looksy/client-ts";
+import {
+  LooksyClient,
+  createIntegrationRouter,
+  type ExtensibleCommandPayload,
+  type IntegrationCommandContext,
+} from "@looksy/client-ts";
 
-const looksyEnabled = process.env.LOOKSY_INTEGRATION_ENABLED === "true";
-const forceLegacyExecution = process.env.LOOKSY_FORCE_LEGACY_EXECUTION === "true";
+interface AutomationCommand extends ExtensibleCommandPayload {
+  type: string;
+}
 
 const looksy = new LooksyClient({
   baseUrl: process.env.LOOKSY_BASE_URL ?? "http://127.0.0.1:4064",
@@ -44,14 +51,24 @@ const looksy = new LooksyClient({
   legacyActionCompatibility: {},
 });
 
-export async function runAutomation(action: { type: string; [key: string]: unknown }) {
-  if (!looksyEnabled || forceLegacyExecution) {
-    return runLegacyAutomation(action);
-  }
+interface AutomationContext extends IntegrationCommandContext {
+  traceId: string;
+}
 
-  return looksy.command({
-    command: action,
-  });
+const router = createIntegrationRouter<AutomationCommand, AutomationContext, unknown>({
+  looksyClient: looksy,
+  legacyExecutor: async ({ command, context }) => runLegacyAutomation(command, context),
+  // When omitted, router reads these env flags directly:
+  // LOOKSY_INTEGRATION_ENABLED
+  // LOOKSY_FORCE_LEGACY_EXECUTION
+  // LOOKSY_FALLBACK_TO_LEGACY_ON_ERROR
+  featureFlags: {},
+});
+
+export async function runAutomation(command: AutomationCommand, context: AutomationContext) {
+  const routed = await router.route({ command, context });
+  telemetry.count("automation.route", 1, { route: routed.route, commandType: command.type });
+  return routed.response;
 }
 ```
 
@@ -60,20 +77,24 @@ export async function runAutomation(action: { type: string; [key: string]: unkno
 1. Deploy with `LOOKSY_INTEGRATION_ENABLED=false`.
 2. Enable `LOOKSY_ENABLE_LEGACY_ACTION_COMPAT=true` for migration cohorts still emitting legacy action names.
 3. Enable `LOOKSY_INTEGRATION_ENABLED=true` for internal dogfood users only.
-4. Expand rollout by cohort while monitoring success/error rate and p95 latency.
-5. Disable `LOOKSY_ENABLE_LEGACY_ACTION_COMPAT` after consumers send protocol v1 command names natively.
+4. Keep `LOOKSY_FALLBACK_TO_LEGACY_ON_ERROR=true` only for initial rollout waves if automatic fallback is required.
+5. Expand rollout by cohort while monitoring success/error rate and p95 latency.
+6. Disable `LOOKSY_ENABLE_LEGACY_ACTION_COMPAT` after consumers send protocol v1 command names natively.
+7. Disable `LOOKSY_FALLBACK_TO_LEGACY_ON_ERROR` after host stability targets are met.
 
 ## 5. Rollback Procedure
 
 1. Set `LOOKSY_FORCE_LEGACY_EXECUTION=true`.
 2. If needed, set `LOOKSY_INTEGRATION_ENABLED=false`.
-3. Re-run smoke checks: handshake + `health.ping` + `screen.capture`.
-4. Capture incident summary with failing command type, error code, and timestamp.
+3. Keep or set `LOOKSY_FALLBACK_TO_LEGACY_ON_ERROR=true` while triaging Looksy failures.
+4. Re-run smoke checks: handshake + `health.ping` + `screen.capture`.
+5. Capture incident summary with failing command type, error code, and timestamp.
 
 ## 6. Acceptance Checklist
 
 - [ ] Integration path can be turned on without redeploying code.
 - [ ] Rollback path can be turned on without redeploying code.
 - [ ] Legacy action compatibility can be toggled independently of integration toggle.
+- [ ] Automatic fallback toggle can be enabled/disabled independently (`LOOKSY_FALLBACK_TO_LEGACY_ON_ERROR`).
 - [ ] Telemetry tags include integration path (`looksy` vs `legacy`) and command type.
 - [ ] Runbook is linked from release docs and owned by on-call.

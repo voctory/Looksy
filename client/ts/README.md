@@ -37,6 +37,53 @@ if (handshake.ok) {
 }
 ```
 
+## Feature-flagged integration router
+
+Use `createIntegrationRouter()` to route command execution between Looksy and a legacy executor without app-level branching.
+
+- `LOOKSY_INTEGRATION_ENABLED`: route through Looksy when true
+- `LOOKSY_FORCE_LEGACY_EXECUTION`: force legacy execution even when integration is enabled
+- `LOOKSY_FALLBACK_TO_LEGACY_ON_ERROR`: optional automatic fallback when Looksy command execution throws
+
+```ts
+import {
+  LooksyClient,
+  createIntegrationRouter,
+  type ExtensibleCommandPayload,
+  type IntegrationCommandContext,
+} from "@looksy/client-ts";
+
+interface AutomationCommand extends ExtensibleCommandPayload {
+  type: string;
+}
+
+interface AutomationContext extends IntegrationCommandContext {
+  traceId: string;
+}
+
+const looksyClient = new LooksyClient({
+  baseUrl: process.env.LOOKSY_BASE_URL ?? "http://127.0.0.1:4064",
+  authToken: process.env.LOOKSY_AUTH_TOKEN,
+});
+
+const router = createIntegrationRouter<AutomationCommand, AutomationContext, unknown>({
+  looksyClient,
+  legacyExecutor: ({ command, context }) => runLegacyAutomation(command, context),
+  featureFlags: {},
+});
+
+const routed = await router.route({
+  command: { type: "screen.capture" },
+  context: { sessionId: "sess_123", traceId: "trace_123" },
+});
+
+if (routed.route === "looksy") {
+  console.log("Looksy response", routed.response);
+} else {
+  console.log("Legacy response", routed.response, routed.route);
+}
+```
+
 ## Legacy action compatibility flag
 
 For integrations migrating from legacy action names, the SDK can map legacy names to protocol v1 command names.
