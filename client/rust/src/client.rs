@@ -35,7 +35,7 @@ impl LooksyClient {
         request: &CommandRequest<TPayload>,
     ) -> Result<CommandResponse<TResult>, LooksyError>
     where
-        TPayload: Serialize + ?Sized,
+        TPayload: Serialize,
         TResult: DeserializeOwned,
     {
         self.post_json("/v1/command", request).await
