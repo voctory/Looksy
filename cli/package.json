@@ -1,0 +1,12 @@
+{
+  "name": "@looksy/cli",
+  "version": "0.1.0",
+  "description": "CLI for local Looksy host runtime",
+  "type": "module",
+  "bin": {
+    "looksy": "./looksy.js"
+  },
+  "scripts": {
+    "start": "node ./looksy.js"
+  }
+}
