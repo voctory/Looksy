@@ -1,0 +1,9 @@
+node_modules/
+dist/
+coverage/
+*.log
+.DS_Store
+client/ts/dist/
+client/rust/target/
+client/csharp/**/bin/
+client/csharp/**/obj/
