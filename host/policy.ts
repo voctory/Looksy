@@ -11,7 +11,7 @@ export interface CommandPolicy {
 }
 
 export class AllowAllPolicy implements CommandPolicy {
-  evaluate(): PolicyDecision {
+  evaluate(_command: CommandPayload, _session: SessionRecord): PolicyDecision {
     return { allowed: true };
   }
 }
@@ -30,7 +30,7 @@ export class StaticCommandPolicy implements CommandPolicy {
     this.deny = new Set(options.deny ?? []);
   }
 
-  evaluate(command: CommandPayload): PolicyDecision {
+  evaluate(command: CommandPayload, _session: SessionRecord): PolicyDecision {
     if (this.deny.has(command.type)) {
       return {
         allowed: false,
@@ -47,4 +47,52 @@ export class StaticCommandPolicy implements CommandPolicy {
 
     return { allowed: true };
   }
+}
+
+export type PolicyPresetName = "diagnostics-only" | "input-only" | "capture-only" | "full";
+
+const DIAGNOSTICS_ONLY_COMMANDS = [
+  "health.ping",
+  "health.getCapabilities",
+  "observability.getMetrics",
+  "control.cancel",
+] as const satisfies readonly CommandPayload["type"][];
+
+const INPUT_ONLY_COMMANDS = [
+  ...DIAGNOSTICS_ONLY_COMMANDS,
+  "input.moveMouse",
+  "input.click",
+  "input.typeText",
+] as const satisfies readonly CommandPayload["type"][];
+
+const CAPTURE_ONLY_COMMANDS = [
+  ...DIAGNOSTICS_ONLY_COMMANDS,
+  "screen.capture",
+] as const satisfies readonly CommandPayload["type"][];
+
+const FULL_COMMANDS = [
+  "health.ping",
+  "health.getCapabilities",
+  "observability.getMetrics",
+  "screen.capture",
+  "input.moveMouse",
+  "input.click",
+  "input.typeText",
+  "app.listWindows",
+  "app.focusWindow",
+  "element.find",
+  "element.invoke",
+  "element.setValue",
+  "control.cancel",
+] as const satisfies readonly CommandPayload["type"][];
+
+export const POLICY_PRESET_ALLOWLISTS: Record<PolicyPresetName, readonly CommandPayload["type"][]> = {
+  "diagnostics-only": DIAGNOSTICS_ONLY_COMMANDS,
+  "input-only": INPUT_ONLY_COMMANDS,
+  "capture-only": CAPTURE_ONLY_COMMANDS,
+  full: FULL_COMMANDS,
+};
+
+export function createPresetPolicy(preset: PolicyPresetName): StaticCommandPolicy {
+  return new StaticCommandPolicy({ allow: POLICY_PRESET_ALLOWLISTS[preset] });
 }

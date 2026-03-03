@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { ProtocolErrorSchema } from "./errors";
+import { ErrorCodeSchema, ProtocolErrorSchema } from "./errors";
 
 export const RequestIdSchema = z.string().min(1).max(128);
 export const SessionIdSchema = z.string().min(1).max(128);
@@ -49,6 +49,32 @@ export const MouseButtonSchema = z.enum(["left", "right", "middle"]);
 export const ImageFormatSchema = z.enum(["png", "jpeg"]);
 export const ElementActionSchema = z.enum(["press", "focus", "expand", "collapse"]);
 
+const MetricsCounterRecordSchema = z.record(z.string().min(1), z.number().int().nonnegative());
+
+export const MetricsLatencySummarySchema = z
+  .object({
+    sampleCount: z.number().int().nonnegative(),
+    minMs: z.number().finite().nonnegative(),
+    maxMs: z.number().finite().nonnegative(),
+    avgMs: z.number().finite().nonnegative(),
+  })
+  .strict();
+
+export type MetricsLatencySummary = z.infer<typeof MetricsLatencySummarySchema>;
+
+export const MetricsSnapshotSchema = z
+  .object({
+    successCount: z.number().int().nonnegative(),
+    failureCount: z.number().int().nonnegative(),
+    successByCommand: MetricsCounterRecordSchema,
+    failureByCommand: MetricsCounterRecordSchema,
+    failureByCode: z.record(ErrorCodeSchema, z.number().int().nonnegative()),
+    latencyMs: MetricsLatencySummarySchema,
+  })
+  .strict();
+
+export type MetricsSnapshot = z.infer<typeof MetricsSnapshotSchema>;
+
 const HealthPingCommandSchema = z
   .object({
     type: z.literal("health.ping"),
@@ -58,6 +84,12 @@ const HealthPingCommandSchema = z
 const HealthGetCapabilitiesCommandSchema = z
   .object({
     type: z.literal("health.getCapabilities"),
+  })
+  .strict();
+
+const ObservabilityGetMetricsCommandSchema = z
+  .object({
+    type: z.literal("observability.getMetrics"),
   })
   .strict();
 
@@ -140,6 +172,7 @@ const ControlCancelCommandSchema = z
 export const CommandPayloadSchema = z.discriminatedUnion("type", [
   HealthPingCommandSchema,
   HealthGetCapabilitiesCommandSchema,
+  ObservabilityGetMetricsCommandSchema,
   ScreenCaptureCommandSchema,
   InputMoveMouseCommandSchema,
   InputClickCommandSchema,
@@ -168,6 +201,13 @@ const HealthCapabilitiesResultSchema = z
   .object({
     type: z.literal("health.capabilities"),
     capabilities: z.array(z.string().min(1)),
+  })
+  .strict();
+
+const ObservabilityMetricsResultSchema = z
+  .object({
+    type: z.literal("observability.metrics"),
+    snapshot: MetricsSnapshotSchema,
   })
   .strict();
 
@@ -255,6 +295,7 @@ const ControlCancelledResultSchema = z
 export const CommandResultPayloadSchema = z.discriminatedUnion("type", [
   HealthPongResultSchema,
   HealthCapabilitiesResultSchema,
+  ObservabilityMetricsResultSchema,
   ScreenCapturedResultSchema,
   InputMouseMovedResultSchema,
   InputClickedResultSchema,

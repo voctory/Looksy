@@ -2,7 +2,8 @@ import type { CommandPayload, CommandResultPayload, HandshakeRequest, Platform }
 
 export type RequestId = string;
 
-export type AdapterCommandPayload = Exclude<CommandPayload, { type: "control.cancel" }>;
+type HostManagedCommandPayload = Extract<CommandPayload, { type: "control.cancel" | "observability.getMetrics" }>;
+export type AdapterCommandPayload = Exclude<CommandPayload, HostManagedCommandPayload>;
 export type AdapterCommandType = AdapterCommandPayload["type"];
 
 export interface AdapterExecutionContext {

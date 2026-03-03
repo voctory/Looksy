@@ -78,7 +78,7 @@ export class MacOSAdapter implements HostAdapter {
       case "health.getCapabilities":
         return {
           type: "health.capabilities",
-          capabilities: [...MACOS_CAPABILITIES, "control.cancel"],
+          capabilities: [...MACOS_CAPABILITIES, "control.cancel", "observability.getMetrics"],
         };
       case "screen.capture":
         return {

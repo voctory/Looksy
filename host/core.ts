@@ -18,6 +18,7 @@ import type { AdapterCommandPayload, HostAdapter, SessionRecord } from "./types"
 
 const ABORT_REASON_TIMEOUT = "timeout";
 const ABORT_REASON_CANCELLED = "cancelled";
+const HOST_MANAGED_CAPABILITIES = ["control.cancel", "observability.getMetrics"] as const satisfies readonly CommandPayload["type"][];
 
 interface InFlightRequest {
   controller: AbortController;
@@ -29,9 +30,23 @@ interface InFlightRequest {
 
 type CommandErrorEnvelope = Extract<CommandResultEnvelope, { ok: false }>;
 
-export interface HostCoreOptions {
+interface StoredAuthToken {
+  expiresAtMs?: number;
+}
+
+export interface HostAuthTokenDefinition {
+  token: string;
+  expiresAt?: string | Date;
+}
+
+export type HostAuthTokenInput = string | HostAuthTokenDefinition;
+
+export interface RotateAuthTokenOptions {
+  revokeExisting?: boolean;
+}
+
+interface HostCoreBaseOptions {
   adapter: HostAdapter;
-  authToken: string;
   policy?: CommandPolicy;
   defaultTimeoutMs?: number;
   now?: () => Date;
@@ -39,9 +54,21 @@ export interface HostCoreOptions {
   metrics?: HostMetricsRecorder;
 }
 
+type HostCoreAuthOptions =
+  | {
+      authToken: string;
+      authTokens?: readonly HostAuthTokenInput[];
+    }
+  | {
+      authToken?: undefined;
+      authTokens: readonly HostAuthTokenInput[];
+    };
+
+export type HostCoreOptions = HostCoreBaseOptions & HostCoreAuthOptions;
+
 export class HostCore {
   private readonly adapter: HostAdapter;
-  private readonly authToken: string;
+  private readonly authTokens = new Map<string, StoredAuthToken>();
   private readonly policy: CommandPolicy;
   private readonly defaultTimeoutMs: number;
   private readonly now: () => Date;
@@ -52,12 +79,43 @@ export class HostCore {
 
   constructor(options: HostCoreOptions) {
     this.adapter = options.adapter;
-    this.authToken = options.authToken;
     this.policy = options.policy ?? new AllowAllPolicy();
     this.defaultTimeoutMs = options.defaultTimeoutMs ?? 10_000;
     this.now = options.now ?? (() => new Date());
     this.sessionIdFactory = options.sessionIdFactory ?? randomUUID;
     this.metrics = options.metrics ?? new InMemoryMetricsRecorder();
+    this.initializeAuthTokens(options);
+  }
+
+  addAuthToken(tokenInput: HostAuthTokenInput): void {
+    const { token, expiresAtMs } = normalizeAuthTokenInput(tokenInput);
+    this.authTokens.set(token, { expiresAtMs });
+  }
+
+  revokeAuthToken(token: string): boolean {
+    return this.authTokens.delete(token);
+  }
+
+  rotateAuthToken(nextToken: HostAuthTokenInput, options: RotateAuthTokenOptions = {}): void {
+    if (options.revokeExisting ?? true) {
+      this.authTokens.clear();
+    }
+
+    this.addAuthToken(nextToken);
+  }
+
+  pruneExpiredAuthTokens(referenceTime: Date = this.now()): number {
+    const referenceMs = referenceTime.getTime();
+    let removed = 0;
+
+    for (const [token, record] of this.authTokens.entries()) {
+      if (record.expiresAtMs !== undefined && record.expiresAtMs <= referenceMs) {
+        this.authTokens.delete(token);
+        removed += 1;
+      }
+    }
+
+    return removed;
   }
 
   handshake(input: unknown): HandshakeResultEnvelope {
@@ -86,7 +144,7 @@ export class HostCore {
       };
     }
 
-    if (request.authToken !== this.authToken) {
+    if (!this.isAuthTokenValid(request.authToken)) {
       return {
         protocolVersion: PROTOCOL_VERSION,
         requestId: request.requestId,
@@ -95,7 +153,7 @@ export class HostCore {
       };
     }
 
-    const capabilities = new Set<CommandPayload["type"]>([...this.adapter.getCapabilities(), "control.cancel"]);
+    const capabilities = new Set<CommandPayload["type"]>([...this.adapter.getCapabilities(), ...HOST_MANAGED_CAPABILITIES]);
     const negotiatedCapabilities = request.requestedCapabilities
       ? request.requestedCapabilities.filter((capability): capability is CommandPayload["type"] =>
           capabilities.has(capability as CommandPayload["type"]),
@@ -171,6 +229,10 @@ export class HostCore {
       };
     }
 
+    if (envelope.command.type === "observability.getMetrics") {
+      return this.handleGetMetricsCommand(envelope.requestId);
+    }
+
     if (this.inFlight.has(envelope.requestId)) {
       return this.commandError(envelope.requestId, "VALIDATION_FAILED", "Duplicate requestId is already in-flight");
     }
@@ -179,6 +241,51 @@ export class HostCore {
       ...envelope,
       command: envelope.command as AdapterCommandPayload,
     });
+  }
+
+  private initializeAuthTokens(options: HostCoreOptions): void {
+    const initialTokens: HostAuthTokenInput[] = [];
+    if ("authToken" in options && typeof options.authToken === "string") {
+      initialTokens.push(options.authToken);
+    }
+
+    if (options.authTokens) {
+      initialTokens.push(...options.authTokens);
+    }
+
+    if (initialTokens.length === 0) {
+      throw new Error("HostCore requires at least one auth token");
+    }
+
+    for (const tokenInput of initialTokens) {
+      this.addAuthToken(tokenInput);
+    }
+  }
+
+  private isAuthTokenValid(token: string): boolean {
+    this.pruneExpiredAuthTokens();
+    return this.authTokens.has(token);
+  }
+
+  private handleGetMetricsCommand(requestId: string): CommandResultEnvelope {
+    try {
+      const snapshot = this.metrics.snapshot?.();
+      if (!snapshot) {
+        return this.commandError(requestId, "INTERNAL", "Metrics snapshot unavailable");
+      }
+
+      return {
+        protocolVersion: PROTOCOL_VERSION,
+        requestId,
+        ok: true,
+        result: {
+          type: "observability.metrics",
+          snapshot,
+        },
+      };
+    } catch {
+      return this.commandError(requestId, "INTERNAL", "Metrics snapshot unavailable");
+    }
   }
 
   private async executeAdapterCommand(
@@ -291,6 +398,34 @@ export class HostCore {
       error: createProtocolError(code, message, details),
     };
   }
+}
+
+function normalizeAuthTokenInput(tokenInput: HostAuthTokenInput): { token: string; expiresAtMs?: number } {
+  if (typeof tokenInput === "string") {
+    if (tokenInput.length === 0) {
+      throw new Error("Auth token must be non-empty");
+    }
+
+    return { token: tokenInput };
+  }
+
+  if (tokenInput.token.length === 0) {
+    throw new Error("Auth token must be non-empty");
+  }
+
+  return {
+    token: tokenInput.token,
+    expiresAtMs: tokenInput.expiresAt ? parseExpiryToMs(tokenInput.expiresAt) : undefined,
+  };
+}
+
+function parseExpiryToMs(expiresAt: string | Date): number {
+  const expiresAtMs = expiresAt instanceof Date ? expiresAt.getTime() : Date.parse(expiresAt);
+  if (!Number.isFinite(expiresAtMs)) {
+    throw new Error("Invalid token expiry timestamp");
+  }
+
+  return expiresAtMs;
 }
 
 function getRequestIdFromUnknown(input: unknown): string {

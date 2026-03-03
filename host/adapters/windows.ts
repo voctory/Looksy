@@ -78,7 +78,7 @@ export class WindowsAdapter implements HostAdapter {
       case "health.getCapabilities":
         return {
           type: "health.capabilities",
-          capabilities: [...WINDOWS_CAPABILITIES, "control.cancel"],
+          capabilities: [...WINDOWS_CAPABILITIES, "control.cancel", "observability.getMetrics"],
         };
       case "screen.capture":
         return {
