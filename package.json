@@ -5,6 +5,8 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc --noEmit",
+    "protocol:generate": "npm run build && node dist/scripts/generateProtocolArtifacts.js",
+    "protocol:check": "npm run build && node dist/scripts/generateProtocolArtifacts.js --check",
     "test": "vitest run",
     "host:start": "npm run build && node dist/host/serverMain.js"
   },

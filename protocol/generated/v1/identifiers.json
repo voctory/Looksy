@@ -1,0 +1,29 @@
+{
+  "protocolVersion": "1.0.0",
+  "commandTypes": [
+    "app.focusWindow",
+    "app.listWindows",
+    "control.cancel",
+    "element.find",
+    "element.invoke",
+    "element.setValue",
+    "health.getCapabilities",
+    "health.ping",
+    "input.click",
+    "input.moveMouse",
+    "input.typeText",
+    "observability.getMetrics",
+    "screen.capture"
+  ],
+  "errorCodes": [
+    "ADAPTER_FAILURE",
+    "AUTH_FAILED",
+    "CANCELLED",
+    "INTERNAL",
+    "POLICY_DENIED",
+    "TIMEOUT",
+    "UNKNOWN_COMMAND",
+    "UNSUPPORTED_VERSION",
+    "VALIDATION_FAILED"
+  ]
+}

@@ -1,4 +1,5 @@
 pub mod client;
+pub mod generated;
 pub mod models;
 
 pub use client::{LooksyClient, LooksyError};
