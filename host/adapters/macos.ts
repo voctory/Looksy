@@ -9,6 +9,8 @@ const MACOS_CAPABILITIES: readonly AdapterCommandPayload["type"][] = [
   "input.moveMouse",
   "input.click",
   "input.typeText",
+  "input.pressKey",
+  "input.scroll",
   "app.listWindows",
   "app.focusWindow",
   "browser.navigate",
@@ -137,6 +139,21 @@ export class MacOSAdapter implements HostAdapter {
         return {
           type: "input.typed",
           textLength: command.text.length,
+        };
+      case "input.pressKey":
+        return {
+          type: "input.keyPressed",
+          key: command.key,
+          repeat: command.repeat ?? 1,
+          ...(command.modifiers && command.modifiers.length > 0 ? { modifiers: command.modifiers } : {}),
+        };
+      case "input.scroll":
+        return {
+          type: "input.scrolled",
+          dx: command.dx,
+          dy: command.dy,
+          ...(command.point ? { point: command.point } : {}),
+          ...(command.modifiers && command.modifiers.length > 0 ? { modifiers: command.modifiers } : {}),
         };
       case "app.listWindows": {
         const windows = command.desktopOnly

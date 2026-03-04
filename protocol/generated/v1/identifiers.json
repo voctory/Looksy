@@ -17,6 +17,8 @@
     "health.ping",
     "input.click",
     "input.moveMouse",
+    "input.pressKey",
+    "input.scroll",
     "input.typeText",
     "observability.getMetrics",
     "screen.capture"

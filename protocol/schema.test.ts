@@ -47,6 +47,63 @@ describe("protocol schemas", () => {
     expect(parsed.success).toBe(true);
   });
 
+  it("accepts input pressKey and scroll command envelopes", () => {
+    const pressKey = CommandEnvelopeSchema.safeParse({
+      protocolVersion: PROTOCOL_VERSION,
+      requestId: "cmd-press-key",
+      sessionId: "session-1",
+      command: {
+        type: "input.pressKey",
+        key: "Enter",
+        modifiers: ["Control", "Shift"],
+        repeat: 2,
+      },
+    });
+    expect(pressKey.success).toBe(true);
+
+    const scroll = CommandEnvelopeSchema.safeParse({
+      protocolVersion: PROTOCOL_VERSION,
+      requestId: "cmd-scroll",
+      sessionId: "session-1",
+      command: {
+        type: "input.scroll",
+        dx: 0,
+        dy: -120.5,
+        point: {
+          x: 400,
+          y: 220,
+          space: "window-client",
+        },
+      },
+    });
+    expect(scroll.success).toBe(true);
+  });
+
+  it("rejects invalid input pressKey and scroll command envelopes", () => {
+    const missingKey = CommandEnvelopeSchema.safeParse({
+      protocolVersion: PROTOCOL_VERSION,
+      requestId: "cmd-press-key-invalid",
+      sessionId: "session-1",
+      command: {
+        type: "input.pressKey",
+        key: "",
+      },
+    });
+    expect(missingKey.success).toBe(false);
+
+    const invalidScroll = CommandEnvelopeSchema.safeParse({
+      protocolVersion: PROTOCOL_VERSION,
+      requestId: "cmd-scroll-invalid",
+      sessionId: "session-1",
+      command: {
+        type: "input.scroll",
+        dx: "fast",
+        dy: 100,
+      },
+    });
+    expect(invalidScroll.success).toBe(false);
+  });
+
   it("accepts browser command envelopes", () => {
     const navigate = CommandEnvelopeSchema.safeParse({
       protocolVersion: PROTOCOL_VERSION,
@@ -128,5 +185,28 @@ describe("protocol schemas", () => {
       eventCount: 4,
     });
     expect(traceStop.success).toBe(true);
+  });
+
+  it("accepts input keyPressed and scrolled result payloads", () => {
+    const keyPressed = CommandResultPayloadSchema.safeParse({
+      type: "input.keyPressed",
+      key: "Enter",
+      modifiers: ["Control"],
+      repeat: 1,
+    });
+    expect(keyPressed.success).toBe(true);
+
+    const scrolled = CommandResultPayloadSchema.safeParse({
+      type: "input.scrolled",
+      dx: 0,
+      dy: -120,
+      point: {
+        x: 50,
+        y: 75,
+        space: "window-client",
+      },
+      modifiers: ["Alt"],
+    });
+    expect(scrolled.success).toBe(true);
   });
 });

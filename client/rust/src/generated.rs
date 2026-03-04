@@ -17,6 +17,8 @@ pub mod command_ids {
     pub const HEALTH_PING: &str = "health.ping";
     pub const INPUT_CLICK: &str = "input.click";
     pub const INPUT_MOVE_MOUSE: &str = "input.moveMouse";
+    pub const INPUT_PRESS_KEY: &str = "input.pressKey";
+    pub const INPUT_SCROLL: &str = "input.scroll";
     pub const INPUT_TYPE_TEXT: &str = "input.typeText";
     pub const OBSERVABILITY_GET_METRICS: &str = "observability.getMetrics";
     pub const SCREEN_CAPTURE: &str = "screen.capture";
@@ -38,6 +40,8 @@ pub mod command_ids {
         HEALTH_PING,
         INPUT_CLICK,
         INPUT_MOVE_MOUSE,
+        INPUT_PRESS_KEY,
+        INPUT_SCROLL,
         INPUT_TYPE_TEXT,
         OBSERVABILITY_GET_METRICS,
         SCREEN_CAPTURE,

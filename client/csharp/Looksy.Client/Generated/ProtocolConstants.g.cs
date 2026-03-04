@@ -21,6 +21,8 @@ public static class ProtocolCommandIds
   public const string HealthPing = "health.ping";
   public const string InputClick = "input.click";
   public const string InputMoveMouse = "input.moveMouse";
+  public const string InputPressKey = "input.pressKey";
+  public const string InputScroll = "input.scroll";
   public const string InputTypeText = "input.typeText";
   public const string ObservabilityGetMetrics = "observability.getMetrics";
   public const string ScreenCapture = "screen.capture";
@@ -43,6 +45,8 @@ public static class ProtocolCommandIds
     HealthPing,
     InputClick,
     InputMoveMouse,
+    InputPressKey,
+    InputScroll,
     InputTypeText,
     ObservabilityGetMetrics,
     ScreenCapture,

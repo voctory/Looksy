@@ -297,6 +297,62 @@ describe("HostCore", () => {
     }
   });
 
+  it("executes input.pressKey and input.scroll commands", async () => {
+    const core = new HostCore({
+      adapter: new MacOSAdapter(),
+      authToken: AUTH_TOKEN,
+    });
+
+    const sessionId = await createSession(core, "hs-input-primitives");
+
+    const pressKeyResponse = await core.command({
+      protocolVersion: PROTOCOL_VERSION,
+      requestId: "cmd-press-key",
+      sessionId,
+      command: {
+        type: "input.pressKey",
+        key: "Enter",
+        modifiers: ["Control", "Shift"],
+      },
+    });
+    expect(pressKeyResponse.ok).toBe(true);
+    if (!pressKeyResponse.ok || pressKeyResponse.result.type !== "input.keyPressed") {
+      return;
+    }
+    expect(pressKeyResponse.result.key).toBe("Enter");
+    expect(pressKeyResponse.result.modifiers).toEqual(["Control", "Shift"]);
+    expect(pressKeyResponse.result.repeat).toBe(1);
+
+    const scrollResponse = await core.command({
+      protocolVersion: PROTOCOL_VERSION,
+      requestId: "cmd-scroll",
+      sessionId,
+      command: {
+        type: "input.scroll",
+        dx: 4.5,
+        dy: -120,
+        point: {
+          x: 100,
+          y: 220,
+          space: "window-client",
+        },
+        modifiers: ["Alt"],
+      },
+    });
+    expect(scrollResponse.ok).toBe(true);
+    if (!scrollResponse.ok || scrollResponse.result.type !== "input.scrolled") {
+      return;
+    }
+    expect(scrollResponse.result.dx).toBe(4.5);
+    expect(scrollResponse.result.dy).toBe(-120);
+    expect(scrollResponse.result.point).toEqual({
+      x: 100,
+      y: 220,
+      space: "window-client",
+    });
+    expect(scrollResponse.result.modifiers).toEqual(["Alt"]);
+  });
+
   it("persists screenshot artifacts and returns retrieval metadata", async () => {
     const core = new HostCore({
       adapter: new MacOSAdapter(),

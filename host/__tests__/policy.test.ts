@@ -131,6 +131,23 @@ function commandForType(type: CommandPayload["type"]): CommandPayload {
         type,
         text: "x",
       };
+    case "input.pressKey":
+      return {
+        type,
+        key: "Enter",
+        modifiers: ["Control"],
+      };
+    case "input.scroll":
+      return {
+        type,
+        dx: 0,
+        dy: 120,
+        point: {
+          x: 4,
+          y: 8,
+          space: "window-client",
+        },
+      };
     case "app.listWindows":
       return { type };
     case "app.focusWindow":

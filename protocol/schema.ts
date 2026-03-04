@@ -124,6 +124,25 @@ const InputTypeTextCommandSchema = z
   })
   .strict();
 
+const InputPressKeyCommandSchema = z
+  .object({
+    type: z.literal("input.pressKey"),
+    key: z.string().trim().min(1),
+    modifiers: z.array(z.string().trim().min(1)).max(8).optional(),
+    repeat: z.number().int().positive().max(32).optional(),
+  })
+  .strict();
+
+const InputScrollCommandSchema = z
+  .object({
+    type: z.literal("input.scroll"),
+    dx: z.number().finite(),
+    dy: z.number().finite(),
+    point: PointSchema.optional(),
+    modifiers: z.array(z.string().trim().min(1)).max(8).optional(),
+  })
+  .strict();
+
 const AppListWindowsCommandSchema = z
   .object({
     type: z.literal("app.listWindows"),
@@ -224,6 +243,8 @@ export const CommandPayloadSchema = z.discriminatedUnion("type", [
   InputMoveMouseCommandSchema,
   InputClickCommandSchema,
   InputTypeTextCommandSchema,
+  InputPressKeyCommandSchema,
+  InputScrollCommandSchema,
   AppListWindowsCommandSchema,
   AppFocusWindowCommandSchema,
   BrowserNavigateCommandSchema,
@@ -294,6 +315,25 @@ const InputTypedResultSchema = z
   .object({
     type: z.literal("input.typed"),
     textLength: z.number().int().nonnegative(),
+  })
+  .strict();
+
+const InputKeyPressedResultSchema = z
+  .object({
+    type: z.literal("input.keyPressed"),
+    key: z.string().trim().min(1),
+    modifiers: z.array(z.string().trim().min(1)).max(8).optional(),
+    repeat: z.number().int().positive(),
+  })
+  .strict();
+
+const InputScrolledResultSchema = z
+  .object({
+    type: z.literal("input.scrolled"),
+    dx: z.number().finite(),
+    dy: z.number().finite(),
+    point: PointSchema.optional(),
+    modifiers: z.array(z.string().trim().min(1)).max(8).optional(),
   })
   .strict();
 
@@ -415,6 +455,8 @@ export const CommandResultPayloadSchema = z.discriminatedUnion("type", [
   InputMouseMovedResultSchema,
   InputClickedResultSchema,
   InputTypedResultSchema,
+  InputKeyPressedResultSchema,
+  InputScrolledResultSchema,
   AppWindowsListedResultSchema,
   AppWindowFocusedResultSchema,
   BrowserNavigatedResultSchema,

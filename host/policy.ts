@@ -63,6 +63,8 @@ const INPUT_ONLY_COMMANDS = [
   "input.moveMouse",
   "input.click",
   "input.typeText",
+  "input.pressKey",
+  "input.scroll",
 ] as const satisfies readonly CommandPayload["type"][];
 
 const CAPTURE_ONLY_COMMANDS = [
@@ -78,6 +80,8 @@ const FULL_COMMANDS = [
   "input.moveMouse",
   "input.click",
   "input.typeText",
+  "input.pressKey",
+  "input.scroll",
   "app.listWindows",
   "app.focusWindow",
   "browser.navigate",
