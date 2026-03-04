@@ -4,6 +4,7 @@ This tracker is the operational checklist for migration phases 9 through 14.
 
 Related gap plan:
 - `docs/superset-gap-remediation-plan.md` tracks technical blockers that must be resolved before phases 12-14 default-on and legacy-removal goals are realistic.
+- `docs/windows-os-input-hardening-report-mar-2026.md` captures the Windows hardening implementation and validation baseline for current rollout waves.
 
 ## Phase 9: Integrate OpenClaw Behind Flag
 

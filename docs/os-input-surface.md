@@ -4,6 +4,9 @@ Last updated: March 4, 2026
 
 This is the source-of-truth scope for current rollout work (phases 9-14 readiness): integrations are **OS-input-first** and must keep browser-driver/state-heavy actions on legacy execution unless explicitly validated.
 
+Detailed implementation + validation report:
+- `docs/windows-os-input-hardening-report-mar-2026.md`
+
 ## Directional Decision (March 2026)
 
 - Route only stable OS-input primitives through Looksy by default.
