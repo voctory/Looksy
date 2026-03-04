@@ -34,10 +34,11 @@ This audit tracks practical parity for:
 
 ## Critical
 
-### 1. Real adapter/backend parity is still missing
+### 1. Real adapter/backend parity is still partial
 
 Impact:
-- Host behavior is still simulated and cannot be treated as production automation parity.
+- Windows host now executes real OS-backed `screen.capture`, `input.*`, and `app.listWindows` / `app.focusWindow`.
+- macOS adapter and browser/element families remain simulated, so parity is still incomplete for practical superset claims.
 
 Evidence:
 - `host/adapters/macos.ts`
@@ -93,7 +94,7 @@ Evidence:
 
 ## P0 (practical superset blockers)
 
-- [ ] Replace simulated adapters with real macOS and Windows automation backends.
+- [ ] Replace remaining simulated adapters with real macOS and browser/element automation backends.
 - [ ] Close browser-driver/state runtime parity for translated OpenClaw routes before broad default-on.
 - [ ] Expand Trope Windows `automation.browser` implementation beyond input/screenshot subset.
 

@@ -29,6 +29,8 @@ Evidence:
 - `input.typeText`
 - `input.pressKey`
 - `input.scroll`
+- `app.listWindows`
+- `app.focusWindow`
 
 ### Consumer mapping surface currently intended for rollout
 
@@ -38,6 +40,7 @@ Evidence:
   - `type` (direct text)
   - `press` (key/chord + optional modifiers)
 - OpenClaw `/screenshot` desktop capture subset (no `targetId`/`ref`/`element`/`fullPage`)
+- OpenClaw `/tabs` and `/tabs/focus` desktop window surfaces
 - Trope browser action subset:
   - `screenshot`, `click`, `hover`, `type_text`, `press_key`, `scroll`
 

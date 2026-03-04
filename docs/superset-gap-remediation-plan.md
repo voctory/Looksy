@@ -78,8 +78,10 @@ Evidence:
 
 ### P0 blockers (must close for practical superset claim)
 
-1. Real backend gap: adapters are still simulated, not real OS/browser automation backends.
-- Evidence: `host/adapters/macos.ts`, `host/adapters/windows.ts` (simulated behavior and synthetic payload generation).
+1. Real backend gap remains partial (not closed end-to-end).
+- Windows host now executes real OS-backed `screen.capture`, `input.*`, and `app.listWindows` / `app.focusWindow`.
+- macOS adapter and browser/element families are still simulated and block practical superset parity.
+- Evidence: `host/adapters/windows.ts`, `host/adapters/macos.ts`.
 
 2. Browser-driver/state parity remains deferred by design for OS-input-first rollout.
 - OpenClaw has translation branches for `/navigate`, `/snapshot`, `/pdf`, `/console`, `/trace/start`, `/trace/stop`, but these remain outside OS-input-first rollout scope and should stay on legacy execution where parity is not yet proven.
@@ -108,7 +110,7 @@ Evidence:
 
 ## Updated Execution Order
 
-1. **P0**: replace simulated adapters with real platform/browser backends.
+1. **P0**: replace remaining simulated adapter surfaces with real platform/browser backends (macOS + browser/element families).
 2. **P0**: close OpenClaw + Trope translation/capability blockers for parity-critical browser routes.
 3. **P1**: expand C#/Rust wrapper coverage to new protocol primitives.
 4. **P1**: add cross-consumer parity/regression matrix for routed actions and error envelopes.
