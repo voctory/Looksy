@@ -386,7 +386,7 @@ function buildWindowsCapturePowerShellScript(params: WindowsCaptureScreenParams)
   const region = normalizeCaptureRegion(params.region);
   const rectLine = region
     ? `$rect = New-Object System.Drawing.Rectangle(${region.x}, ${region.y}, ${region.width}, ${region.height})`
-    : "$rect = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds";
+    : "$rect = [System.Windows.Forms.SystemInformation]::VirtualScreen";
   const imageFormatLine =
     params.format === "jpeg"
       ? "$imageFormat = [System.Drawing.Imaging.ImageFormat]::Jpeg"
@@ -492,6 +492,10 @@ function runEncodedPowerShell(
     });
   });
 }
+
+export const __windowsCaptureTestInternals = {
+  buildWindowsCapturePowerShellScript,
+};
 
 function deriveBrowserTitle(url: string): string {
   try {

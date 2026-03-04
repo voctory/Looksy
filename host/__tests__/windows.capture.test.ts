@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { PROTOCOL_VERSION } from "../../protocol";
-import { WindowsAdapter } from "../adapters/windows";
+import { __windowsCaptureTestInternals, WindowsAdapter } from "../adapters/windows";
 import { HostCore } from "../core";
 
 const AUTH_TOKEN = "test-token";
@@ -29,6 +29,31 @@ async function createSession(core: HostCore, requestId = "hs-windows-capture") {
 }
 
 describe("WindowsAdapter screen.capture", () => {
+  it("uses virtual desktop bounds for default capture script", () => {
+    const script = __windowsCaptureTestInternals.buildWindowsCapturePowerShellScript({
+      format: "png",
+      signal: new AbortController().signal,
+    });
+    expect(script).toContain("[System.Windows.Forms.SystemInformation]::VirtualScreen");
+    expect(script).not.toContain("PrimaryScreen.Bounds");
+  });
+
+  it("keeps region override in capture script", () => {
+    const script = __windowsCaptureTestInternals.buildWindowsCapturePowerShellScript({
+      format: "png",
+      region: {
+        x: 20,
+        y: 40,
+        width: 300,
+        height: 200,
+        space: "screen-physical",
+      },
+      signal: new AbortController().signal,
+    });
+    expect(script).toContain("$rect = New-Object System.Drawing.Rectangle(20, 40, 300, 200)");
+    expect(script).not.toContain("SystemInformation]::VirtualScreen");
+  });
+
   it("stores PNG signature bytes when captureScreen override is used", async () => {
     const captureBytes = Buffer.concat([PNG_SIGNATURE, Buffer.from([0x00, 0x01, 0x02])]);
     const captureScreen = vi.fn(async () => captureBytes);
