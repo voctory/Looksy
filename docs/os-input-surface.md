@@ -32,6 +32,10 @@ Evidence:
 - `app.listWindows`
 - `app.focusWindow`
 
+Global point-space note for Windows:
+- `input.moveMouse`, `input.click`, and `input.scroll` execute as global OS input and accept screen spaces (`screen-physical`, `screen-dip`).
+- `window-client` point space is rejected for those global commands because no window-relative anchor is provided at command time.
+
 ### Consumer mapping surface currently intended for rollout
 
 - OpenClaw `/act` subsets:

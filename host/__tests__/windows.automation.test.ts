@@ -60,8 +60,13 @@ describe("WindowsAdapter automation commands", () => {
     const scroll = vi.fn(async () => undefined);
     const listWindows = vi.fn(async () => windows);
     const focusWindow = vi.fn(async () => true);
+    const screenDipToPhysicalPoint = vi.fn(async ({ point }: { point: { x: number; y: number; space: "screen-dip" } }) => ({
+      x: point.x * 2,
+      y: point.y * 3,
+    }));
     const core = new HostCore({
       adapter: new WindowsAdapter({
+        screenDipToPhysicalPoint,
         automation: {
           moveMouse,
           click,
@@ -82,7 +87,7 @@ describe("WindowsAdapter automation commands", () => {
       point: {
         x: 10,
         y: 20,
-        space: "screen-physical",
+        space: "screen-dip",
       },
     });
     expect(moveMouseResponse.ok).toBe(true);
@@ -93,7 +98,7 @@ describe("WindowsAdapter automation commands", () => {
       point: {
         x: 15,
         y: 25,
-        space: "screen-physical",
+        space: "screen-dip",
       },
     });
     expect(clickResponse.ok).toBe(true);
@@ -116,6 +121,11 @@ describe("WindowsAdapter automation commands", () => {
       type: "input.scroll",
       dx: 120,
       dy: -240,
+      point: {
+        x: 30,
+        y: 40,
+        space: "screen-dip",
+      },
       modifiers: ["Shift"],
     });
     expect(scrollResponse.ok).toBe(true);
@@ -144,8 +154,8 @@ describe("WindowsAdapter automation commands", () => {
     expect(moveMouse).toHaveBeenCalledWith(
       expect.objectContaining({
         point: {
-          x: 10,
-          y: 20,
+          x: 20,
+          y: 60,
           space: "screen-physical",
         },
       }),
@@ -153,6 +163,11 @@ describe("WindowsAdapter automation commands", () => {
     expect(click).toHaveBeenCalledWith(
       expect.objectContaining({
         button: "left",
+        point: {
+          x: 30,
+          y: 75,
+          space: "screen-physical",
+        },
       }),
     );
     expect(typeText).toHaveBeenCalledWith(
@@ -171,6 +186,11 @@ describe("WindowsAdapter automation commands", () => {
       expect.objectContaining({
         dx: 120,
         dy: -240,
+        point: {
+          x: 60,
+          y: 120,
+          space: "screen-physical",
+        },
         modifiers: ["Shift"],
       }),
     );
@@ -185,9 +205,121 @@ describe("WindowsAdapter automation commands", () => {
         windowId: "hwnd-111",
       }),
     );
+    expect(screenDipToPhysicalPoint).toHaveBeenCalledTimes(3);
+    expect(screenDipToPhysicalPoint).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        point: {
+          x: 10,
+          y: 20,
+          space: "screen-dip",
+        },
+      }),
+    );
+    expect(screenDipToPhysicalPoint).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        point: {
+          x: 15,
+          y: 25,
+          space: "screen-dip",
+        },
+      }),
+    );
+    expect(screenDipToPhysicalPoint).toHaveBeenNthCalledWith(
+      3,
+      expect.objectContaining({
+        point: {
+          x: 30,
+          y: 40,
+          space: "screen-dip",
+        },
+      }),
+    );
   });
 
-  it("builds PowerShell scripts with Windows API calls", () => {
+  it("rejects window-client point space for global input commands", async () => {
+    const moveMouse = vi.fn(async () => undefined);
+    const click = vi.fn(async () => undefined);
+    const scroll = vi.fn(async () => undefined);
+    const core = new HostCore({
+      adapter: new WindowsAdapter({
+        automation: {
+          moveMouse,
+          click,
+          scroll,
+        },
+      }),
+      authToken: AUTH_TOKEN,
+    });
+
+    const sessionId = await createSession(core, "hs-windows-window-client-rejection");
+    const commands: Array<{
+      requestId: string;
+      expectedMessage: string;
+      command: Record<string, unknown>;
+    }> = [
+      {
+        requestId: "cmd-window-client-move",
+        expectedMessage: "WINDOWS_INPUT_MOVE_MOUSE_WINDOW_CLIENT_UNSUPPORTED",
+        command: {
+          type: "input.moveMouse",
+          point: {
+            x: 1,
+            y: 2,
+            space: "window-client",
+          },
+        },
+      },
+      {
+        requestId: "cmd-window-client-click",
+        expectedMessage: "WINDOWS_INPUT_CLICK_WINDOW_CLIENT_UNSUPPORTED",
+        command: {
+          type: "input.click",
+          button: "left",
+          point: {
+            x: 3,
+            y: 4,
+            space: "window-client",
+          },
+        },
+      },
+      {
+        requestId: "cmd-window-client-scroll",
+        expectedMessage: "WINDOWS_INPUT_SCROLL_WINDOW_CLIENT_UNSUPPORTED",
+        command: {
+          type: "input.scroll",
+          dx: 0,
+          dy: -120,
+          point: {
+            x: 5,
+            y: 6,
+            space: "window-client",
+          },
+        },
+      },
+    ];
+
+    for (const testCase of commands) {
+      const response = await issueCommand(core, sessionId, testCase.requestId, testCase.command);
+      expect(response.ok).toBe(false);
+      if (response.ok) {
+        continue;
+      }
+      expect(response.error.code).toBe("ADAPTER_FAILURE");
+      expect(response.error.details).toEqual(
+        expect.objectContaining({
+          message: testCase.expectedMessage,
+        }),
+      );
+    }
+
+    expect(moveMouse).not.toHaveBeenCalled();
+    expect(click).not.toHaveBeenCalled();
+    expect(scroll).not.toHaveBeenCalled();
+  });
+
+  it("builds PowerShell scripts for pointer, windowing, and SendKeys execution", () => {
     const moveScript = __windowsCaptureTestInternals.buildWindowsMoveMousePowerShellScript({
       x: 100,
       y: 240,
@@ -207,6 +339,24 @@ describe("WindowsAdapter automation commands", () => {
     const focusWindowScript = __windowsCaptureTestInternals.buildWindowsFocusWindowPowerShellScript("hwnd-ABC");
     expect(focusWindowScript).toContain("SetForegroundWindow");
     expect(focusWindowScript).toContain("^hwnd-([0-9A-Fa-f]+)$");
+
+    const sequence = __windowsCaptureTestInternals.buildWindowsPressKeySequence({
+      key: "Enter",
+      modifiers: ["Control", "Shift"],
+      repeat: 2,
+    });
+    expect(sequence).toBe("^+{ENTER}^+{ENTER}");
+
+    const spaceSequence = __windowsCaptureTestInternals.buildWindowsPressKeySequence({
+      key: "Space",
+      repeat: 3,
+    });
+    expect(spaceSequence).toBe("   ");
+
+    const sendKeysScript = __windowsCaptureTestInternals.buildWindowsSendKeysPowerShellScript("O'Brien{ENTER}");
+    expect(sendKeysScript).toContain("Add-Type -AssemblyName System.Windows.Forms");
+    expect(sendKeysScript).toContain("[System.Windows.Forms.SendKeys]::SendWait($sequence)");
+    expect(sendKeysScript).toContain("$sequence = 'O''Brien{ENTER}'");
   });
 
   it.runIf(process.platform !== "win32")(
@@ -230,7 +380,7 @@ describe("WindowsAdapter automation commands", () => {
             point: {
               x: 1,
               y: 2,
-              space: "screen-physical",
+              space: "screen-dip",
             },
           },
         },
@@ -240,6 +390,11 @@ describe("WindowsAdapter automation commands", () => {
           command: {
             type: "input.click",
             button: "left",
+            point: {
+              x: 3,
+              y: 4,
+              space: "screen-dip",
+            },
           },
         },
         {
@@ -265,6 +420,11 @@ describe("WindowsAdapter automation commands", () => {
             type: "input.scroll",
             dx: 0,
             dy: -120,
+            point: {
+              x: 5,
+              y: 6,
+              space: "screen-dip",
+            },
           },
         },
         {

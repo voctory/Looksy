@@ -60,6 +60,18 @@ type WindowsFocusWindowParams = {
   signal: AbortSignal;
 };
 type WindowsFocusWindowFn = (params: WindowsFocusWindowParams) => Promise<boolean>;
+type WindowsScreenDipToPhysicalPointParams = {
+  point: {
+    x: number;
+    y: number;
+    space: "screen-dip";
+  };
+  signal: AbortSignal;
+};
+type WindowsScreenDipToPhysicalPointFn = (params: WindowsScreenDipToPhysicalPointParams) => Promise<{
+  x: number;
+  y: number;
+}>;
 
 interface WindowsAutomationFns {
   moveMouse: WindowsMoveMouseFn;
@@ -74,6 +86,7 @@ interface WindowsAutomationFns {
 export interface WindowsAdapterOptions extends SimulatedAdapterOptions {
   captureScreen?: WindowsCaptureScreenFn;
   automation?: Partial<WindowsAutomationFns>;
+  screenDipToPhysicalPoint?: WindowsScreenDipToPhysicalPointFn;
 }
 
 const WINDOWS_CAPTURE_NON_WIN32_MESSAGE = "WINDOWS_SCREEN_CAPTURE_UNSUPPORTED_ON_NON_WINDOWS";
@@ -105,6 +118,7 @@ export class WindowsAdapter implements HostAdapter {
   private readonly delayMsByCommand: Partial<Record<AdapterCommandPayload["type"], number>>;
   private readonly captureScreen: WindowsCaptureScreenFn;
   private readonly automation: WindowsAutomationFns;
+  private readonly screenDipToPhysicalPoint: WindowsScreenDipToPhysicalPointFn;
   private readonly elements: SimulatedElement[];
   private readonly elementValues = new Map<string, string>();
   private browserUrl = "about:blank";
@@ -135,6 +149,7 @@ export class WindowsAdapter implements HostAdapter {
       listWindows: options.automation?.listWindows ?? listWindowsViaPowerShell,
       focusWindow: options.automation?.focusWindow ?? focusWindowViaPowerShell,
     };
+    this.screenDipToPhysicalPoint = options.screenDipToPhysicalPoint ?? convertScreenDipToPhysicalPoint;
 
     this.elements = [
       {
@@ -202,25 +217,43 @@ export class WindowsAdapter implements HostAdapter {
         };
       }
       case "input.moveMouse":
-        await this.automation.moveMouse({
-          point: command.point,
-          signal: context.signal,
-        });
-        return {
-          type: "input.mouseMoved",
-          point: command.point,
-        };
+        {
+          const normalizedPoint = await normalizeGlobalInputPoint(
+            command.point,
+            context.signal,
+            "WINDOWS_INPUT_MOVE_MOUSE",
+            this.screenDipToPhysicalPoint,
+          );
+          await this.automation.moveMouse({
+            point: normalizedPoint,
+            signal: context.signal,
+          });
+          return {
+            type: "input.mouseMoved",
+            point: normalizedPoint,
+          };
+        }
       case "input.click":
-        await this.automation.click({
-          button: command.button,
-          point: command.point,
-          signal: context.signal,
-        });
-        return {
-          type: "input.clicked",
-          button: command.button,
-          ...(command.point ? { point: command.point } : {}),
-        };
+        {
+          const normalizedPoint = command.point
+            ? await normalizeGlobalInputPoint(
+                command.point,
+                context.signal,
+                "WINDOWS_INPUT_CLICK",
+                this.screenDipToPhysicalPoint,
+              )
+            : undefined;
+          await this.automation.click({
+            button: command.button,
+            point: normalizedPoint,
+            signal: context.signal,
+          });
+          return {
+            type: "input.clicked",
+            button: command.button,
+            ...(normalizedPoint ? { point: normalizedPoint } : {}),
+          };
+        }
       case "input.typeText":
         await this.automation.typeText({
           text: command.text,
@@ -244,20 +277,30 @@ export class WindowsAdapter implements HostAdapter {
           ...(command.modifiers && command.modifiers.length > 0 ? { modifiers: command.modifiers } : {}),
         };
       case "input.scroll":
-        await this.automation.scroll({
-          dx: command.dx,
-          dy: command.dy,
-          point: command.point,
-          modifiers: command.modifiers,
-          signal: context.signal,
-        });
-        return {
-          type: "input.scrolled",
-          dx: command.dx,
-          dy: command.dy,
-          ...(command.point ? { point: command.point } : {}),
-          ...(command.modifiers && command.modifiers.length > 0 ? { modifiers: command.modifiers } : {}),
-        };
+        {
+          const normalizedPoint = command.point
+            ? await normalizeGlobalInputPoint(
+                command.point,
+                context.signal,
+                "WINDOWS_INPUT_SCROLL",
+                this.screenDipToPhysicalPoint,
+              )
+            : undefined;
+          await this.automation.scroll({
+            dx: command.dx,
+            dy: command.dy,
+            point: normalizedPoint,
+            modifiers: command.modifiers,
+            signal: context.signal,
+          });
+          return {
+            type: "input.scrolled",
+            dx: command.dx,
+            dy: command.dy,
+            ...(normalizedPoint ? { point: normalizedPoint } : {}),
+            ...(command.modifiers && command.modifiers.length > 0 ? { modifiers: command.modifiers } : {}),
+          };
+        }
       case "app.listWindows": {
         const windows = await this.automation.listWindows({
           includeMinimized: command.includeMinimized ?? false,
@@ -459,6 +502,51 @@ function normalizeScreenPoint(
     throw new Error(errorCode);
   }
   return { x, y };
+}
+
+async function normalizeGlobalInputPoint(
+  point:
+    | InputMoveMouseCommand["point"]
+    | NonNullable<InputClickCommand["point"]>
+    | NonNullable<InputScrollCommand["point"]>,
+  signal: AbortSignal,
+  errorPrefix: string,
+  screenDipToPhysicalPoint: WindowsScreenDipToPhysicalPointFn,
+): Promise<{ x: number; y: number; space: "screen-physical" }> {
+  if (point.space === "window-client") {
+    throw new Error(`${errorPrefix}_WINDOW_CLIENT_UNSUPPORTED`);
+  }
+
+  const normalized = normalizeScreenPoint(point, `${errorPrefix}_INVALID_POINT`);
+  if (point.space === "screen-physical") {
+    return {
+      x: normalized.x,
+      y: normalized.y,
+      space: "screen-physical",
+    };
+  }
+
+  const converted = await screenDipToPhysicalPoint({
+    point: {
+      x: normalized.x,
+      y: normalized.y,
+      space: "screen-dip",
+    },
+    signal,
+  });
+  const normalizedConverted = normalizeScreenPoint(
+    {
+      x: converted.x,
+      y: converted.y,
+      space: "screen-physical",
+    },
+    `${errorPrefix}_SCREEN_DIP_CONVERSION_FAILED`,
+  );
+  return {
+    x: normalizedConverted.x,
+    y: normalizedConverted.y,
+    space: "screen-physical",
+  };
 }
 
 function buildWindowsPointerTypeDefinitionLines(): string[] {
@@ -972,6 +1060,16 @@ async function captureWindowsScreenViaPowerShell(params: WindowsCaptureScreenPar
     throw new Error("WINDOWS_SCREEN_CAPTURE_EMPTY_BYTES");
   }
   return bytes;
+}
+
+async function convertScreenDipToPhysicalPoint(
+  params: WindowsScreenDipToPhysicalPointParams,
+): Promise<{ x: number; y: number }> {
+  throwIfAborted(params.signal);
+  return {
+    x: params.point.x,
+    y: params.point.y,
+  };
 }
 
 function normalizeCaptureRegion(region?: ScreenCaptureRegion): { x: number; y: number; width: number; height: number } | null {
