@@ -9,6 +9,9 @@ This is the source-of-truth scope for current rollout work (phases 9-14 readines
 - Route only stable OS-input primitives through Looksy by default.
 - Keep browser-driver/state actions (navigation/snapshot/pdf/console/trace and rich target-scoped semantics) on legacy execution during this rollout wave.
 - Use feature flags to allow safe canarying and immediate rollback without redeploy.
+- Windows is the priority rollout platform for this scope.
+- For actions inside this scope, target architecture is Looksy-exclusive execution (do not rely on Trope native browser capture/backend as the primary path).
+- TODO: document per-consumer criteria/date for making `LOOKSY_FALLBACK_TO_LEGACY_ON_ERROR=false` the default in Windows cohorts.
 
 Evidence:
 - `protocol/schema.ts`

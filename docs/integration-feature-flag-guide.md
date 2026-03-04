@@ -2,6 +2,14 @@
 
 This guide defines a reversible integration pattern for embedding Looksy in consumer applications.
 
+## Integration Intent (Windows Priority)
+
+- Windows is the primary rollout and parity-validation platform for this integration wave.
+- With `LOOKSY_INTEGRATION_ENABLED=true`, the target steady-state is **Looksy-exclusive execution** for supported commands.
+- Do not treat Trope native browser capture/backend execution as the primary path for Looksy-integrated browser flows.
+- `LOOKSY_FORCE_LEGACY_EXECUTION` and `LOOKSY_FALLBACK_TO_LEGACY_ON_ERROR` are safety/rollback controls, not steady-state architecture.
+- TODO: Each consumer repo should record its Windows milestone for setting `LOOKSY_FALLBACK_TO_LEGACY_ON_ERROR=false`.
+
 ## 1. Required Flags
 
 Define these toggles in the consumer app:
