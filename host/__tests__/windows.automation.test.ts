@@ -348,12 +348,16 @@ describe("WindowsAdapter automation commands", () => {
         space: "screen-physical",
       },
     });
+    expect(clickScript).toContain("function Send-LooksyInput {");
     expect(clickScript).toContain("[LooksyInputNative]::SendInput");
+    expect(clickScript).toContain("Send-LooksyInput -inputs $inputs");
     expect(clickScript).toContain("New-LooksyMouseInput");
     expect(clickScript).not.toContain("mouse_event");
 
     const typeTextScript = __windowsCaptureTestInternals.buildWindowsTypeTextPowerShellScript("O'Brien{ENTER}");
+    expect(typeTextScript).toContain("function Send-LooksyInput {");
     expect(typeTextScript).toContain("FromBase64String");
+    expect(typeTextScript).toContain("Send-LooksyInput -inputs $inputs.ToArray()");
     expect(typeTextScript).toContain("New-LooksyKeyInput -wVk 0 -wScan $scanCode -flags 0x0004");
     expect(typeTextScript).not.toContain("SendKeys");
 
@@ -362,9 +366,11 @@ describe("WindowsAdapter automation commands", () => {
       modifiers: ["Control", "Shift"],
       repeat: 2,
     });
+    expect(pressScript).toContain("function Send-LooksyInput {");
     expect(pressScript).toContain("[LooksyInputNative]::SendInput");
     expect(pressScript).toContain("$modifierVirtualKeys = @(17, 16)");
     expect(pressScript).toContain("$keyVirtualKey = [uint16]13");
+    expect(pressScript).toContain("Send-LooksyInput -inputs $inputs.ToArray()");
     expect(pressScript).not.toContain("SendKeys");
 
     const spacePlan = __windowsCaptureTestInternals.buildWindowsPressKeySendInputPlan({
@@ -383,10 +389,17 @@ describe("WindowsAdapter automation commands", () => {
       dy: -240,
       modifiers: ["Shift"],
     });
+    expect(scrollScript).toContain("function Send-LooksyInput {");
     expect(scrollScript).toContain("[LooksyInputNative]::SendInput");
     expect(scrollScript).toContain("New-LooksyMouseInput -flags 0x1000");
     expect(scrollScript).toContain("New-LooksyMouseInput -flags 0x0800");
+    expect(scrollScript).toContain("Send-LooksyInput -inputs $inputs.ToArray()");
     expect(scrollScript).not.toContain("keybd_event");
+
+    const dipScaleScript = __windowsCaptureTestInternals.buildWindowsScreenDipScalePowerShellScript();
+    expect(dipScaleScript).toContain("[LooksyDpiScaleNative]::GetDpiForSystem()");
+    expect(dipScaleScript).toContain("[LooksyDpiScaleNative]::GetDeviceCaps($desktopDc, [LooksyDpiScaleNative]::LOGPIXELSX)");
+    expect(dipScaleScript).toContain("[PSCustomObject]@{ scale = [double]$scale } | ConvertTo-Json -Compress");
   });
 
   it.runIf(process.platform !== "win32")(

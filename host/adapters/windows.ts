@@ -1282,6 +1282,7 @@ function buildWindowsScreenDipScalePowerShellScript(): string {
     "using System;",
     "using System.Runtime.InteropServices;",
     "public static class LooksyDpiScaleNative {",
+    "  public const int LOGPIXELSX = 88;",
     "  [DllImport(\"user32.dll\", SetLastError = true)]",
     "  public static extern uint GetDpiForSystem();",
     "  [DllImport(\"user32.dll\", SetLastError = true)]",
@@ -1307,7 +1308,7 @@ function buildWindowsScreenDipScalePowerShellScript(): string {
     "  $desktopDc = [LooksyDpiScaleNative]::GetDC([IntPtr]::Zero)",
     "  try {",
     "    if ($desktopDc -ne [IntPtr]::Zero) {",
-    "      $logPixelsX = [LooksyDpiScaleNative]::GetDeviceCaps($desktopDc, 88)",
+    "      $logPixelsX = [LooksyDpiScaleNative]::GetDeviceCaps($desktopDc, [LooksyDpiScaleNative]::LOGPIXELSX)",
     "      if ($logPixelsX -gt 0) {",
     "        $dpi = [double]$logPixelsX",
     "      }",
@@ -1549,6 +1550,7 @@ export const __windowsCaptureTestInternals = {
   buildWindowsScrollPowerShellScript,
   buildWindowsListWindowsPowerShellScript,
   buildWindowsFocusWindowPowerShellScript,
+  buildWindowsScreenDipScalePowerShellScript,
 };
 
 function deriveBrowserTitle(url: string): string {
