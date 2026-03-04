@@ -2,6 +2,13 @@ import { spawn } from "node:child_process";
 import type { CommandResultPayload, WindowInfo } from "../../protocol";
 import type { AdapterCommandPayload, AdapterExecutionContext, HostAdapter } from "../types";
 import { mimeTypeForFormat, sleepAbortable, type SimulatedAdapterOptions, type SimulatedElement, throwIfAborted } from "./shared";
+import {
+  CdpWindowsBrowserBackend,
+  isWindowsBrowserCommand,
+  type WindowsBrowserBackend,
+  type WindowsBrowserBackendMode,
+  type WindowsBrowserCdpBackendOptions,
+} from "./windowsBrowserCdp";
 
 type ScreenCaptureCommand = Extract<AdapterCommandPayload, { type: "screen.capture" }>;
 type ScreenCaptureRegion = NonNullable<ScreenCaptureCommand["region"]>;
@@ -180,6 +187,9 @@ export interface WindowsAdapterOptions extends SimulatedAdapterOptions {
   captureScreen?: WindowsCaptureScreenFn;
   automation?: Partial<WindowsAutomationFns>;
   screenDipToPhysicalPoint?: WindowsScreenDipToPhysicalPointFn;
+  browserBackendMode?: WindowsBrowserBackendMode;
+  browserBackend?: WindowsBrowserBackend;
+  browserCdp?: WindowsBrowserCdpBackendOptions;
 }
 
 const WINDOWS_CAPTURE_NON_WIN32_MESSAGE = "WINDOWS_SCREEN_CAPTURE_UNSUPPORTED_ON_NON_WINDOWS";
@@ -221,6 +231,8 @@ export class WindowsAdapter implements HostAdapter {
   private readonly captureScreen: WindowsCaptureScreenFn;
   private readonly automation: WindowsAutomationFns;
   private readonly screenDipToPhysicalPoint: WindowsScreenDipToPhysicalPointFn;
+  private readonly browserBackendMode: WindowsBrowserBackendMode;
+  private readonly browserBackend?: WindowsBrowserBackend;
   private readonly elements: SimulatedElement[];
   private readonly resolvedElements = new Map<string, ResolvedWindowsElement>();
   private readonly elementValues = new Map<string, string>();
@@ -262,6 +274,10 @@ export class WindowsAdapter implements HostAdapter {
       windowClose: options.automation?.windowClose ?? closeWindowViaPowerShell,
     };
     this.screenDipToPhysicalPoint = options.screenDipToPhysicalPoint ?? convertScreenDipToPhysicalPoint;
+    this.browserBackendMode = options.browserBackendMode ?? "simulated";
+    if (this.browserBackendMode === "cdp") {
+      this.browserBackend = options.browserBackend ?? new CdpWindowsBrowserBackend(options.browserCdp);
+    }
 
     this.elements = [
       {
@@ -287,6 +303,12 @@ export class WindowsAdapter implements HostAdapter {
     const delayMs = this.delayMsByCommand[command.type] ?? 0;
     await sleepAbortable(delayMs, context.signal);
     throwIfAborted(context.signal);
+    if (this.browserBackendMode === "cdp" && isWindowsBrowserCommand(command)) {
+      if (!this.browserBackend) {
+        throw new Error("WINDOWS_BROWSER_BACKEND_NOT_CONFIGURED");
+      }
+      return this.browserBackend.execute(command, context);
+    }
 
     switch (command.type) {
       case "health.ping":

@@ -554,6 +554,75 @@ describe("WindowsAdapter automation commands", () => {
     );
   });
 
+  it("routes browser commands to the configured CDP backend when enabled", async () => {
+    const browserBackend = {
+      execute: vi.fn(async () => ({
+        type: "browser.navigated" as const,
+        url: "https://example.com/cdp",
+        title: "example.com",
+        navigatedAt: "2026-03-03T00:00:00.000Z",
+      })),
+    };
+    const core = new HostCore({
+      adapter: new WindowsAdapter({
+        browserBackendMode: "cdp",
+        browserBackend,
+      }),
+      authToken: AUTH_TOKEN,
+    });
+    const sessionId = await createSession(core, "hs-windows-cdp-route");
+
+    const response = await issueCommand(core, sessionId, "cmd-windows-cdp-route", {
+      type: "browser.navigate",
+      url: "https://example.com/cdp",
+    });
+    expect(response.ok).toBe(true);
+    if (!response.ok || response.result.type !== "browser.navigated") {
+      return;
+    }
+    expect(response.result.url).toBe("https://example.com/cdp");
+    expect(browserBackend.execute).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "browser.navigate",
+        url: "https://example.com/cdp",
+      }),
+      expect.objectContaining({
+        sessionId,
+      }),
+    );
+  });
+
+  it("returns ADAPTER_FAILURE when CDP browser backend execution fails", async () => {
+    const browserBackend = {
+      execute: vi.fn(async () => {
+        throw new Error("WINDOWS_BROWSER_CDP_UNAVAILABLE");
+      }),
+    };
+    const core = new HostCore({
+      adapter: new WindowsAdapter({
+        browserBackendMode: "cdp",
+        browserBackend,
+      }),
+      authToken: AUTH_TOKEN,
+    });
+    const sessionId = await createSession(core, "hs-windows-cdp-failure");
+
+    const response = await issueCommand(core, sessionId, "cmd-windows-cdp-failure", {
+      type: "browser.snapshot",
+    });
+    expect(response.ok).toBe(false);
+    if (response.ok) {
+      return;
+    }
+    expect(response.error.code).toBe("ADAPTER_FAILURE");
+    expect(response.error.details).toEqual(
+      expect.objectContaining({
+        message: "WINDOWS_BROWSER_CDP_UNAVAILABLE",
+      }),
+    );
+    expect(browserBackend.execute).toHaveBeenCalledTimes(1);
+  });
+
   it("rejects window-client point space for global input commands", async () => {
     const moveMouse = vi.fn(async () => undefined);
     const click = vi.fn(async () => undefined);
