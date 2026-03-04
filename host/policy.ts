@@ -65,6 +65,8 @@ const INPUT_ONLY_COMMANDS = [
   "input.typeText",
   "input.pressKey",
   "input.scroll",
+  "input.drag",
+  "input.swipe",
 ] as const satisfies readonly CommandPayload["type"][];
 
 const CAPTURE_ONLY_COMMANDS = [
@@ -82,8 +84,17 @@ const FULL_COMMANDS = [
   "input.typeText",
   "input.pressKey",
   "input.scroll",
+  "input.drag",
+  "input.swipe",
+  "clipboard.read",
+  "clipboard.write",
   "app.listWindows",
   "app.focusWindow",
+  "app.windowMove",
+  "app.windowResize",
+  "app.windowMinimize",
+  "app.windowMaximize",
+  "app.windowClose",
   "browser.navigate",
   "browser.snapshot",
   "browser.pdf",

@@ -10,8 +10,19 @@ type InputClickCommand = Extract<AdapterCommandPayload, { type: "input.click" }>
 type InputTypeTextCommand = Extract<AdapterCommandPayload, { type: "input.typeText" }>;
 type InputPressKeyCommand = Extract<AdapterCommandPayload, { type: "input.pressKey" }>;
 type InputScrollCommand = Extract<AdapterCommandPayload, { type: "input.scroll" }>;
+type InputDragCommand = Extract<AdapterCommandPayload, { type: "input.drag" }>;
+type InputSwipeCommand = Extract<AdapterCommandPayload, { type: "input.swipe" }>;
+type ClipboardReadCommand = Extract<AdapterCommandPayload, { type: "clipboard.read" }>;
+type ClipboardWriteCommand = Extract<AdapterCommandPayload, { type: "clipboard.write" }>;
 type AppListWindowsCommand = Extract<AdapterCommandPayload, { type: "app.listWindows" }>;
 type AppFocusWindowCommand = Extract<AdapterCommandPayload, { type: "app.focusWindow" }>;
+type AppWindowMoveCommand = Extract<AdapterCommandPayload, { type: "app.windowMove" }>;
+type AppWindowResizeCommand = Extract<AdapterCommandPayload, { type: "app.windowResize" }>;
+type AppWindowMinimizeCommand = Extract<AdapterCommandPayload, { type: "app.windowMinimize" }>;
+type AppWindowMaximizeCommand = Extract<AdapterCommandPayload, { type: "app.windowMaximize" }>;
+type AppWindowCloseCommand = Extract<AdapterCommandPayload, { type: "app.windowClose" }>;
+type ElementInvokeCommand = Extract<AdapterCommandPayload, { type: "element.invoke" }>;
+type ElementSetValueCommand = Extract<AdapterCommandPayload, { type: "element.setValue" }>;
 type WindowsCaptureScreenParams = {
   format: "png" | "jpeg";
   region?: ScreenCaptureRegion;
@@ -49,6 +60,30 @@ type WindowsScrollParams = {
   signal: AbortSignal;
 };
 type WindowsScrollFn = (params: WindowsScrollParams) => Promise<void>;
+type WindowsDragParams = {
+  start: InputDragCommand["start"];
+  end: InputDragCommand["end"];
+  button: NonNullable<InputDragCommand["button"]>;
+  modifiers?: readonly string[];
+  signal: AbortSignal;
+};
+type WindowsDragFn = (params: WindowsDragParams) => Promise<void>;
+type WindowsSwipeParams = {
+  start: InputSwipeCommand["start"];
+  end: InputSwipeCommand["end"];
+  modifiers?: readonly string[];
+  signal: AbortSignal;
+};
+type WindowsSwipeFn = (params: WindowsSwipeParams) => Promise<void>;
+type WindowsClipboardReadParams = {
+  signal: AbortSignal;
+};
+type WindowsClipboardReadFn = (params: WindowsClipboardReadParams) => Promise<string>;
+type WindowsClipboardWriteParams = {
+  text: string;
+  signal: AbortSignal;
+};
+type WindowsClipboardWriteFn = (params: WindowsClipboardWriteParams) => Promise<void>;
 type WindowsListWindowsParams = {
   includeMinimized: boolean;
   desktopOnly: boolean;
@@ -60,6 +95,42 @@ type WindowsFocusWindowParams = {
   signal: AbortSignal;
 };
 type WindowsFocusWindowFn = (params: WindowsFocusWindowParams) => Promise<boolean>;
+type WindowsWindowMoveResult = {
+  moved: boolean;
+  bounds: WindowInfo["bounds"];
+};
+type WindowsWindowMoveParams = {
+  windowId: string;
+  point: AppWindowMoveCommand["point"];
+  signal: AbortSignal;
+};
+type WindowsWindowMoveFn = (params: WindowsWindowMoveParams) => Promise<WindowsWindowMoveResult>;
+type WindowsWindowResizeResult = {
+  resized: boolean;
+  bounds: WindowInfo["bounds"];
+};
+type WindowsWindowResizeParams = {
+  windowId: string;
+  width: number;
+  height: number;
+  signal: AbortSignal;
+};
+type WindowsWindowResizeFn = (params: WindowsWindowResizeParams) => Promise<WindowsWindowResizeResult>;
+type WindowsWindowMinimizeParams = {
+  windowId: string;
+  signal: AbortSignal;
+};
+type WindowsWindowMinimizeFn = (params: WindowsWindowMinimizeParams) => Promise<boolean>;
+type WindowsWindowMaximizeParams = {
+  windowId: string;
+  signal: AbortSignal;
+};
+type WindowsWindowMaximizeFn = (params: WindowsWindowMaximizeParams) => Promise<boolean>;
+type WindowsWindowCloseParams = {
+  windowId: string;
+  signal: AbortSignal;
+};
+type WindowsWindowCloseFn = (params: WindowsWindowCloseParams) => Promise<boolean>;
 type WindowsScreenDipToPhysicalPointParams = {
   point: {
     x: number;
@@ -72,6 +143,19 @@ type WindowsScreenDipToPhysicalPointFn = (params: WindowsScreenDipToPhysicalPoin
   x: number;
   y: number;
 }>;
+type ResolvedWindowsElement = {
+  elementId: string;
+  selector: string;
+  windowId?: string;
+  runtimeId?: string;
+  rect?: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    space: "window-client";
+  };
+};
 
 interface WindowsAutomationFns {
   moveMouse: WindowsMoveMouseFn;
@@ -79,8 +163,17 @@ interface WindowsAutomationFns {
   typeText: WindowsTypeTextFn;
   pressKey: WindowsPressKeyFn;
   scroll: WindowsScrollFn;
+  drag: WindowsDragFn;
+  swipe: WindowsSwipeFn;
+  clipboardRead: WindowsClipboardReadFn;
+  clipboardWrite: WindowsClipboardWriteFn;
   listWindows: WindowsListWindowsFn;
   focusWindow: WindowsFocusWindowFn;
+  windowMove: WindowsWindowMoveFn;
+  windowResize: WindowsWindowResizeFn;
+  windowMinimize: WindowsWindowMinimizeFn;
+  windowMaximize: WindowsWindowMaximizeFn;
+  windowClose: WindowsWindowCloseFn;
 }
 
 export interface WindowsAdapterOptions extends SimulatedAdapterOptions {
@@ -100,8 +193,17 @@ const WINDOWS_CAPABILITIES: readonly AdapterCommandPayload["type"][] = [
   "input.typeText",
   "input.pressKey",
   "input.scroll",
+  "input.drag",
+  "input.swipe",
+  "clipboard.read",
+  "clipboard.write",
   "app.listWindows",
   "app.focusWindow",
+  "app.windowMove",
+  "app.windowResize",
+  "app.windowMinimize",
+  "app.windowMaximize",
+  "app.windowClose",
   "browser.navigate",
   "browser.snapshot",
   "browser.pdf",
@@ -120,6 +222,7 @@ export class WindowsAdapter implements HostAdapter {
   private readonly automation: WindowsAutomationFns;
   private readonly screenDipToPhysicalPoint: WindowsScreenDipToPhysicalPointFn;
   private readonly elements: SimulatedElement[];
+  private readonly resolvedElements = new Map<string, ResolvedWindowsElement>();
   private readonly elementValues = new Map<string, string>();
   private browserUrl = "about:blank";
   private browserTitle = "Looksy";
@@ -146,8 +249,17 @@ export class WindowsAdapter implements HostAdapter {
       typeText: options.automation?.typeText ?? typeTextViaPowerShell,
       pressKey: options.automation?.pressKey ?? pressKeyViaPowerShell,
       scroll: options.automation?.scroll ?? scrollViaPowerShell,
+      drag: options.automation?.drag ?? dragViaPowerShell,
+      swipe: options.automation?.swipe ?? swipeViaPowerShell,
+      clipboardRead: options.automation?.clipboardRead ?? clipboardReadViaPowerShell,
+      clipboardWrite: options.automation?.clipboardWrite ?? clipboardWriteViaPowerShell,
       listWindows: options.automation?.listWindows ?? listWindowsViaPowerShell,
       focusWindow: options.automation?.focusWindow ?? focusWindowViaPowerShell,
+      windowMove: options.automation?.windowMove ?? moveWindowViaPowerShell,
+      windowResize: options.automation?.windowResize ?? resizeWindowViaPowerShell,
+      windowMinimize: options.automation?.windowMinimize ?? minimizeWindowViaPowerShell,
+      windowMaximize: options.automation?.windowMaximize ?? maximizeWindowViaPowerShell,
+      windowClose: options.automation?.windowClose ?? closeWindowViaPowerShell,
     };
     this.screenDipToPhysicalPoint = options.screenDipToPhysicalPoint ?? convertScreenDipToPhysicalPoint;
 
@@ -301,6 +413,78 @@ export class WindowsAdapter implements HostAdapter {
             ...(command.modifiers && command.modifiers.length > 0 ? { modifiers: command.modifiers } : {}),
           };
         }
+      case "input.drag": {
+        const start = await normalizeGlobalInputPoint(
+          command.start,
+          context.signal,
+          "WINDOWS_INPUT_DRAG_START",
+          this.screenDipToPhysicalPoint,
+        );
+        const end = await normalizeGlobalInputPoint(
+          command.end,
+          context.signal,
+          "WINDOWS_INPUT_DRAG_END",
+          this.screenDipToPhysicalPoint,
+        );
+        await this.automation.drag({
+          start,
+          end,
+          button: command.button ?? "left",
+          modifiers: command.modifiers,
+          signal: context.signal,
+        });
+        return {
+          type: "input.dragged",
+          start,
+          end,
+          ...(command.button ? { button: command.button } : {}),
+          ...(command.modifiers && command.modifiers.length > 0 ? { modifiers: command.modifiers } : {}),
+        };
+      }
+      case "input.swipe": {
+        const start = await normalizeGlobalInputPoint(
+          command.start,
+          context.signal,
+          "WINDOWS_INPUT_SWIPE_START",
+          this.screenDipToPhysicalPoint,
+        );
+        const end = await normalizeGlobalInputPoint(
+          command.end,
+          context.signal,
+          "WINDOWS_INPUT_SWIPE_END",
+          this.screenDipToPhysicalPoint,
+        );
+        await this.automation.swipe({
+          start,
+          end,
+          modifiers: command.modifiers,
+          signal: context.signal,
+        });
+        return {
+          type: "input.swiped",
+          start,
+          end,
+          ...(command.modifiers && command.modifiers.length > 0 ? { modifiers: command.modifiers } : {}),
+        };
+      }
+      case "clipboard.read": {
+        const text = await this.automation.clipboardRead({
+          signal: context.signal,
+        });
+        return {
+          type: "clipboard.read",
+          text,
+        };
+      }
+      case "clipboard.write":
+        await this.automation.clipboardWrite({
+          text: command.text,
+          signal: context.signal,
+        });
+        return {
+          type: "clipboard.written",
+          textLength: command.text.length,
+        };
       case "app.listWindows": {
         const windows = await this.automation.listWindows({
           includeMinimized: command.includeMinimized ?? false,
@@ -321,6 +505,80 @@ export class WindowsAdapter implements HostAdapter {
           type: "app.windowFocused",
           windowId: command.windowId,
           focused,
+        };
+      }
+      case "app.windowMove": {
+        const point = await normalizeGlobalInputPoint(
+          command.point,
+          context.signal,
+          "WINDOWS_APP_WINDOW_MOVE",
+          this.screenDipToPhysicalPoint,
+        );
+        const moved = await this.automation.windowMove({
+          windowId: command.windowId,
+          point,
+          signal: context.signal,
+        });
+        return {
+          type: "app.windowMoved",
+          windowId: command.windowId,
+          bounds: moved.bounds,
+        };
+      }
+      case "app.windowResize": {
+        const normalizedSize = await normalizeGlobalWindowSize(
+          {
+            width: command.width,
+            height: command.height,
+            space: command.space,
+          },
+          context.signal,
+          "WINDOWS_APP_WINDOW_RESIZE",
+          this.screenDipToPhysicalPoint,
+        );
+        const resized = await this.automation.windowResize({
+          windowId: command.windowId,
+          width: normalizedSize.width,
+          height: normalizedSize.height,
+          signal: context.signal,
+        });
+        return {
+          type: "app.windowResized",
+          windowId: command.windowId,
+          bounds: resized.bounds,
+        };
+      }
+      case "app.windowMinimize": {
+        const minimized = await this.automation.windowMinimize({
+          windowId: command.windowId,
+          signal: context.signal,
+        });
+        return {
+          type: "app.windowMinimized",
+          windowId: command.windowId,
+          minimized,
+        };
+      }
+      case "app.windowMaximize": {
+        const maximized = await this.automation.windowMaximize({
+          windowId: command.windowId,
+          signal: context.signal,
+        });
+        return {
+          type: "app.windowMaximized",
+          windowId: command.windowId,
+          maximized,
+        };
+      }
+      case "app.windowClose": {
+        const closed = await this.automation.windowClose({
+          windowId: command.windowId,
+          signal: context.signal,
+        });
+        return {
+          type: "app.windowClosed",
+          windowId: command.windowId,
+          closed,
         };
       }
       case "browser.navigate": {
@@ -410,49 +668,148 @@ export class WindowsAdapter implements HostAdapter {
         };
       }
       case "element.find": {
-        const element = this.elements.find(
-          (candidate) =>
-            candidate.selector === command.selector &&
-            (!command.windowId || candidate.windowId === command.windowId),
-        );
-
-        if (!element) {
+        const resolved = await this.findElement(command.selector, command.windowId, context.signal);
+        if (!resolved) {
           return {
             type: "element.found",
             elementId: "not-found",
             confidence: 0,
           };
         }
-
         return {
           type: "element.found",
-          elementId: element.elementId,
-          confidence: 0.9,
-          rect: element.rect,
+          elementId: resolved.elementId,
+          confidence: resolved.runtimeId ? 0.96 : 0.9,
+          ...(resolved.rect ? { rect: resolved.rect } : {}),
         };
       }
       case "element.invoke": {
-        const exists = this.elements.some((element) => element.elementId === command.elementId);
+        const resolved = this.resolveElementById(command.elementId);
+        const exists = Boolean(resolved);
+        const invoked =
+          resolved && resolved.runtimeId
+            ? await this.invokeElementViaUia(resolved, command.action, context.signal)
+            : exists;
         return {
           type: "element.invoked",
           elementId: command.elementId,
           action: command.action,
-          invoked: exists,
+          invoked,
         };
       }
       case "element.setValue": {
-        const exists = this.elements.some((element) => element.elementId === command.elementId);
-        if (exists) {
+        const resolved = this.resolveElementById(command.elementId);
+        const exists = Boolean(resolved);
+        const valueSet =
+          resolved && resolved.runtimeId
+            ? await this.setElementValueViaUia(resolved, command.value, context.signal)
+            : exists;
+        if (valueSet) {
           this.elementValues.set(command.elementId, command.value);
         }
         return {
           type: "element.valueSet",
           elementId: command.elementId,
-          valueSet: exists,
+          valueSet,
         };
       }
       default:
         return assertNever(command);
+    }
+  }
+
+  private async findElement(
+    selector: string,
+    windowId: string | undefined,
+    signal: AbortSignal,
+  ): Promise<ResolvedWindowsElement | null> {
+    if (process.platform === "win32") {
+      try {
+        const resolved = await findElementViaPowerShell({
+          selector,
+          windowId,
+          signal,
+        });
+        if (resolved) {
+          this.resolvedElements.set(resolved.elementId, resolved);
+          return resolved;
+        }
+      } catch {
+        // Fall through to deterministic simulated matching if UIA lookup fails.
+      }
+    }
+
+    const fallback = this.elements.find(
+      (candidate) => candidate.selector === selector && (!windowId || candidate.windowId === windowId),
+    );
+    if (!fallback) {
+      return null;
+    }
+    const resolved: ResolvedWindowsElement = {
+      elementId: fallback.elementId,
+      selector: fallback.selector,
+      windowId: fallback.windowId,
+      rect: fallback.rect,
+    };
+    this.resolvedElements.set(resolved.elementId, resolved);
+    return resolved;
+  }
+
+  private resolveElementById(elementId: string): ResolvedWindowsElement | null {
+    const cached = this.resolvedElements.get(elementId);
+    if (cached) {
+      return cached;
+    }
+
+    const fallback = this.elements.find((element) => element.elementId === elementId);
+    if (!fallback) {
+      return null;
+    }
+    const resolved: ResolvedWindowsElement = {
+      elementId: fallback.elementId,
+      selector: fallback.selector,
+      windowId: fallback.windowId,
+      rect: fallback.rect,
+    };
+    this.resolvedElements.set(resolved.elementId, resolved);
+    return resolved;
+  }
+
+  private async invokeElementViaUia(
+    element: ResolvedWindowsElement,
+    action: ElementInvokeCommand["action"],
+    signal: AbortSignal,
+  ): Promise<boolean> {
+    if (!element.runtimeId || process.platform !== "win32") {
+      return true;
+    }
+    try {
+      return await invokeElementViaPowerShell({
+        runtimeId: element.runtimeId,
+        action,
+        signal,
+      });
+    } catch {
+      return false;
+    }
+  }
+
+  private async setElementValueViaUia(
+    element: ResolvedWindowsElement,
+    value: ElementSetValueCommand["value"],
+    signal: AbortSignal,
+  ): Promise<boolean> {
+    if (!element.runtimeId || process.platform !== "win32") {
+      return true;
+    }
+    try {
+      return await setElementValueViaPowerShell({
+        runtimeId: element.runtimeId,
+        value,
+        signal,
+      });
+    } catch {
+      return false;
     }
   }
 
@@ -493,7 +850,12 @@ function normalizeScreenPoint(
   point:
     | InputMoveMouseCommand["point"]
     | NonNullable<InputClickCommand["point"]>
-    | NonNullable<InputScrollCommand["point"]>,
+    | NonNullable<InputScrollCommand["point"]>
+    | InputDragCommand["start"]
+    | InputDragCommand["end"]
+    | InputSwipeCommand["start"]
+    | InputSwipeCommand["end"]
+    | AppWindowMoveCommand["point"],
   errorCode: string,
 ): { x: number; y: number } {
   const x = Math.round(point.x);
@@ -508,7 +870,12 @@ async function normalizeGlobalInputPoint(
   point:
     | InputMoveMouseCommand["point"]
     | NonNullable<InputClickCommand["point"]>
-    | NonNullable<InputScrollCommand["point"]>,
+    | NonNullable<InputScrollCommand["point"]>
+    | InputDragCommand["start"]
+    | InputDragCommand["end"]
+    | InputSwipeCommand["start"]
+    | InputSwipeCommand["end"]
+    | AppWindowMoveCommand["point"],
   signal: AbortSignal,
   errorPrefix: string,
   screenDipToPhysicalPoint: WindowsScreenDipToPhysicalPointFn,
@@ -547,6 +914,47 @@ async function normalizeGlobalInputPoint(
     y: normalizedConverted.y,
     space: "screen-physical",
   };
+}
+
+async function normalizeGlobalWindowSize(
+  size: { width: number; height: number; space: AppWindowResizeCommand["space"] },
+  signal: AbortSignal,
+  errorPrefix: string,
+  screenDipToPhysicalPoint: WindowsScreenDipToPhysicalPointFn,
+): Promise<{ width: number; height: number }> {
+  const width = Math.round(size.width);
+  const height = Math.round(size.height);
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+    throw new Error(`${errorPrefix}_INVALID_SIZE`);
+  }
+  if (size.space === "window-client") {
+    throw new Error(`${errorPrefix}_WINDOW_CLIENT_UNSUPPORTED`);
+  }
+  if (size.space === "screen-physical") {
+    return { width, height };
+  }
+
+  const converted = await screenDipToPhysicalPoint({
+    point: {
+      x: width,
+      y: height,
+      space: "screen-dip",
+    },
+    signal,
+  });
+  const normalized = {
+    width: Math.round(converted.x),
+    height: Math.round(converted.y),
+  };
+  if (
+    !Number.isFinite(normalized.width) ||
+    !Number.isFinite(normalized.height) ||
+    normalized.width <= 0 ||
+    normalized.height <= 0
+  ) {
+    throw new Error(`${errorPrefix}_INVALID_SIZE`);
+  }
+  return normalized;
 }
 
 function buildWindowsInputTypeDefinitionLines(): string[] {
@@ -1049,6 +1457,575 @@ async function scrollViaPowerShell(params: WindowsScrollParams): Promise<void> {
   await runPowerShellScript(script, params.signal, "WINDOWS_INPUT_SCROLL");
 }
 
+function buildWindowsDragPowerShellScript(params: Omit<WindowsDragParams, "signal">): string {
+  const buttonFlags: Record<InputClickCommand["button"], { down: number; up: number }> = {
+    left: { down: 0x0002, up: 0x0004 },
+    right: { down: 0x0008, up: 0x0010 },
+    middle: { down: 0x0020, up: 0x0040 },
+  };
+  const start = normalizeScreenPoint(params.start, "WINDOWS_INPUT_DRAG_INVALID_START");
+  const end = normalizeScreenPoint(params.end, "WINDOWS_INPUT_DRAG_INVALID_END");
+  const flags = buttonFlags[params.button];
+  const modifierVirtualKeys = (params.modifiers ?? []).map((modifier) =>
+    getInputModifierVirtualKey(modifier, "WINDOWS_INPUT_DRAG"),
+  );
+  const modifierArray = modifierVirtualKeys.length > 0 ? modifierVirtualKeys.join(", ") : "";
+  return [
+    "$ErrorActionPreference = 'Stop'",
+    ...buildWindowsInputTypeDefinitionLines(),
+    ...buildWindowsSendInputHelperLines("WINDOWS_INPUT_DRAG"),
+    `$startX = ${start.x}`,
+    `$startY = ${start.y}`,
+    `$endX = ${end.x}`,
+    `$endY = ${end.y}`,
+    `$mouseDownFlag = [uint32]${flags.down}`,
+    `$mouseUpFlag = [uint32]${flags.up}`,
+    `$modifierVirtualKeys = @(${modifierArray})`,
+    "$modifierDownInputs = New-Object System.Collections.Generic.List[LooksyInputNative+INPUT]",
+    "foreach ($vk in $modifierVirtualKeys) {",
+    "  $modifierDownInputs.Add((New-LooksyKeyInput -wVk ([uint16]$vk) -wScan 0 -flags 0))",
+    "}",
+    "Send-LooksyInput -inputs $modifierDownInputs.ToArray()",
+    "if (-not [LooksyInputNative]::SetCursorPos($startX, $startY)) { throw 'SetCursorPos failed' }",
+    "$mouseDownInputs = @((New-LooksyMouseInput -flags $mouseDownFlag -mouseData 0))",
+    "Send-LooksyInput -inputs $mouseDownInputs",
+    "$dx = $endX - $startX",
+    "$dy = $endY - $startY",
+    "$distance = [Math]::Sqrt(([double]($dx * $dx)) + ([double]($dy * $dy)))",
+    "$steps = [int][Math]::Ceiling($distance / 18.0)",
+    "if ($steps -lt 6) { $steps = 6 }",
+    "if ($steps -gt 72) { $steps = 72 }",
+    "for ($step = 1; $step -le $steps; $step++) {",
+    "  $progress = [double]$step / [double]$steps",
+    "  $x = [int][Math]::Round($startX + ($dx * $progress))",
+    "  $y = [int][Math]::Round($startY + ($dy * $progress))",
+    "  if (-not [LooksyInputNative]::SetCursorPos($x, $y)) { throw 'SetCursorPos failed' }",
+    "  Start-Sleep -Milliseconds 4",
+    "}",
+    "$mouseUpInputs = @((New-LooksyMouseInput -flags $mouseUpFlag -mouseData 0))",
+    "Send-LooksyInput -inputs $mouseUpInputs",
+    "$modifierUpInputs = New-Object System.Collections.Generic.List[LooksyInputNative+INPUT]",
+    "for ($i = $modifierVirtualKeys.Length - 1; $i -ge 0; $i--) {",
+    "  $modifierUpInputs.Add((New-LooksyKeyInput -wVk ([uint16]$modifierVirtualKeys[$i]) -wScan 0 -flags 0x0002))",
+    "}",
+    "Send-LooksyInput -inputs $modifierUpInputs.ToArray()",
+  ].join("\n");
+}
+
+async function dragViaPowerShell(params: WindowsDragParams): Promise<void> {
+  assertWindowsHost("WINDOWS_INPUT_DRAG_UNSUPPORTED_ON_NON_WINDOWS");
+  const script = buildWindowsDragPowerShellScript({
+    start: params.start,
+    end: params.end,
+    button: params.button,
+    modifiers: params.modifiers,
+  });
+  await runPowerShellScript(script, params.signal, "WINDOWS_INPUT_DRAG");
+}
+
+function buildWindowsSwipePowerShellScript(params: Omit<WindowsSwipeParams, "signal">): string {
+  return buildWindowsDragPowerShellScript({
+    start: params.start,
+    end: params.end,
+    button: "left",
+    modifiers: params.modifiers,
+  }).replaceAll("WINDOWS_INPUT_DRAG", "WINDOWS_INPUT_SWIPE");
+}
+
+async function swipeViaPowerShell(params: WindowsSwipeParams): Promise<void> {
+  assertWindowsHost("WINDOWS_INPUT_SWIPE_UNSUPPORTED_ON_NON_WINDOWS");
+  const script = buildWindowsSwipePowerShellScript({
+    start: params.start,
+    end: params.end,
+    modifiers: params.modifiers,
+  });
+  await runPowerShellScript(script, params.signal, "WINDOWS_INPUT_SWIPE");
+}
+
+function buildWindowsClipboardReadPowerShellScript(): string {
+  return [
+    "$ErrorActionPreference = 'Stop'",
+    "$text = ''",
+    "try {",
+    "  $raw = Get-Clipboard -Raw -ErrorAction Stop",
+    "} catch {",
+    "  $raw = ''",
+    "}",
+    "if ($null -eq $raw) { $raw = '' }",
+    "$text = [string]$raw",
+    "[PSCustomObject]@{ text = [string]$text } | ConvertTo-Json -Compress",
+  ].join("\n");
+}
+
+function parseWindowsClipboardReadPayload(payload: unknown): string {
+  if (isRecord(payload) && typeof payload.text === "string") {
+    return payload.text;
+  }
+  throw new Error("WINDOWS_CLIPBOARD_READ_INVALID_JSON");
+}
+
+async function clipboardReadViaPowerShell(params: WindowsClipboardReadParams): Promise<string> {
+  assertWindowsHost("WINDOWS_CLIPBOARD_READ_UNSUPPORTED_ON_NON_WINDOWS");
+  const payload = await runPowerShellJson(buildWindowsClipboardReadPowerShellScript(), params.signal, "WINDOWS_CLIPBOARD_READ");
+  return parseWindowsClipboardReadPayload(payload);
+}
+
+function buildWindowsClipboardWritePowerShellScript(text: string): string {
+  const textBase64 = Buffer.from(text, "utf16le").toString("base64");
+  return [
+    "$ErrorActionPreference = 'Stop'",
+    `$textBase64 = '${textBase64}'`,
+    "$text = [System.Text.Encoding]::Unicode.GetString([Convert]::FromBase64String($textBase64))",
+    "Set-Clipboard -Value $text -ErrorAction Stop",
+  ].join("\n");
+}
+
+async function clipboardWriteViaPowerShell(params: WindowsClipboardWriteParams): Promise<void> {
+  assertWindowsHost("WINDOWS_CLIPBOARD_WRITE_UNSUPPORTED_ON_NON_WINDOWS");
+  const script = buildWindowsClipboardWritePowerShellScript(params.text);
+  await runPowerShellScript(script, params.signal, "WINDOWS_CLIPBOARD_WRITE");
+}
+
+function buildWindowsWindowControlTypeDefinitionLines(): string[] {
+  return [
+    "if (-not (\"LooksyWindowControlNative\" -as [type])) {",
+    "  Add-Type -TypeDefinition @\"",
+    "using System;",
+    "using System.Runtime.InteropServices;",
+    "public static class LooksyWindowControlNative {",
+    "  [StructLayout(LayoutKind.Sequential)]",
+    "  public struct RECT {",
+    "    public int Left;",
+    "    public int Top;",
+    "    public int Right;",
+    "    public int Bottom;",
+    "  }",
+    "  [DllImport(\"user32.dll\", SetLastError = true)]",
+    "  public static extern bool IsWindow(IntPtr hWnd);",
+    "  [DllImport(\"user32.dll\", SetLastError = true)]",
+    "  public static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);",
+    "  [DllImport(\"user32.dll\", SetLastError = true)]",
+    "  public static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);",
+    "  [DllImport(\"user32.dll\", SetLastError = true)]",
+    "  public static extern bool ShowWindowAsync(IntPtr hWnd, int nCmdShow);",
+    "  [DllImport(\"user32.dll\", SetLastError = true)]",
+    "  public static extern bool IsIconic(IntPtr hWnd);",
+    "  [DllImport(\"user32.dll\", SetLastError = true)]",
+    "  public static extern bool IsZoomed(IntPtr hWnd);",
+    "  [DllImport(\"user32.dll\", SetLastError = true)]",
+    "  public static extern bool PostMessageW(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);",
+    "}",
+    "\"@",
+    "}",
+  ];
+}
+
+function buildWindowsWindowMovePowerShellScript(params: Omit<WindowsWindowMoveParams, "signal">): string {
+  const escapedWindowId = escapePowerShellSingleQuotedString(params.windowId);
+  const point = normalizeScreenPoint(params.point, "WINDOWS_APP_WINDOW_MOVE_INVALID_POINT");
+  return [
+    "$ErrorActionPreference = 'Stop'",
+    ...buildWindowsWindowControlTypeDefinitionLines(),
+    `$windowId = '${escapedWindowId}'`,
+    "$match = [regex]::Match($windowId, '^hwnd-([0-9A-Fa-f]+)$')",
+    "if (-not $match.Success) {",
+    "  [PSCustomObject]@{ moved = $false; status = 'invalidWindowId' } | ConvertTo-Json -Compress",
+    "  return",
+    "}",
+    "$hWndValue = [Convert]::ToInt64($match.Groups[1].Value, 16)",
+    "$hWnd = [IntPtr]::new($hWndValue)",
+    "if (-not [LooksyWindowControlNative]::IsWindow($hWnd)) {",
+    "  [PSCustomObject]@{ moved = $false; status = 'windowNotFound' } | ConvertTo-Json -Compress",
+    "  return",
+    "}",
+    `$x = ${point.x}`,
+    `$y = ${point.y}`,
+    "$rect = New-Object LooksyWindowControlNative+RECT",
+    "if (-not [LooksyWindowControlNative]::GetWindowRect($hWnd, [ref]$rect)) {",
+    "  [PSCustomObject]@{ moved = $false; status = 'boundsUnavailable'; errorCode = 'getWindowRectFailed' } | ConvertTo-Json -Compress",
+    "  return",
+    "}",
+    "$width = [int]($rect.Right - $rect.Left)",
+    "$height = [int]($rect.Bottom - $rect.Top)",
+    "if ($width -le 0 -or $height -le 0) {",
+    "  [PSCustomObject]@{ moved = $false; status = 'boundsUnavailable'; errorCode = 'invalidBounds' } | ConvertTo-Json -Compress",
+    "  return",
+    "}",
+    "$setPos = [LooksyWindowControlNative]::SetWindowPos($hWnd, [IntPtr]::Zero, $x, $y, $width, $height, 0x0014)",
+    "$status = if ($setPos) { 'moved' } else { 'moveFailed' }",
+    "$errorCode = if ($setPos) { $null } else { [Runtime.InteropServices.Marshal]::GetLastWin32Error().ToString() }",
+    "$rectAfter = New-Object LooksyWindowControlNative+RECT",
+    "if (-not [LooksyWindowControlNative]::GetWindowRect($hWnd, [ref]$rectAfter)) {",
+    "  $status = 'boundsUnavailable'",
+    "  if (-not $errorCode) { $errorCode = 'getWindowRectFailed' }",
+    "}",
+    "$bounds = $null",
+    "if ($status -ne 'boundsUnavailable') {",
+    "  $afterWidth = [double]($rectAfter.Right - $rectAfter.Left)",
+    "  $afterHeight = [double]($rectAfter.Bottom - $rectAfter.Top)",
+    "  $bounds = [PSCustomObject]@{",
+    "    x = [double]$rectAfter.Left",
+    "    y = [double]$rectAfter.Top",
+    "    width = $afterWidth",
+    "    height = $afterHeight",
+    "    space = 'screen-physical'",
+    "  }",
+    "}",
+    "$payload = [ordered]@{ moved = [bool]$setPos; status = [string]$status; bounds = $bounds }",
+    "if ($errorCode) { $payload.errorCode = [string]$errorCode }",
+    "[PSCustomObject]$payload | ConvertTo-Json -Compress -Depth 6",
+  ].join("\n");
+}
+
+function parseWindowBoundsPayload(bounds: unknown, errorPrefix: string): WindowInfo["bounds"] {
+  if (!isRecord(bounds)) {
+    throw new Error(`${errorPrefix}_INVALID_JSON`);
+  }
+  const space = bounds.space;
+  if (
+    typeof bounds.x !== "number" ||
+    !Number.isFinite(bounds.x) ||
+    typeof bounds.y !== "number" ||
+    !Number.isFinite(bounds.y) ||
+    typeof bounds.width !== "number" ||
+    !Number.isFinite(bounds.width) ||
+    bounds.width <= 0 ||
+    typeof bounds.height !== "number" ||
+    !Number.isFinite(bounds.height) ||
+    bounds.height <= 0
+  ) {
+    throw new Error(`${errorPrefix}_INVALID_JSON`);
+  }
+  if (space !== "screen-physical" && space !== "screen-dip" && space !== "window-client") {
+    throw new Error(`${errorPrefix}_INVALID_JSON`);
+  }
+  return {
+    x: bounds.x,
+    y: bounds.y,
+    width: bounds.width,
+    height: bounds.height,
+    space,
+  };
+}
+
+function parseWindowMovePayload(payload: unknown): WindowsWindowMoveResult {
+  if (!isRecord(payload) || typeof payload.moved !== "boolean") {
+    throw new Error("WINDOWS_APP_WINDOW_MOVE_INVALID_JSON");
+  }
+  const status = typeof payload.status === "string" ? payload.status : null;
+  if (status === "invalidWindowId") {
+    throw new Error("WINDOWS_APP_WINDOW_MOVE_INVALID_WINDOW_ID");
+  }
+  if (status === "windowNotFound") {
+    throw new Error("WINDOWS_APP_WINDOW_MOVE_WINDOW_NOT_FOUND");
+  }
+  if (status === "moveFailed") {
+    throw new Error(
+      typeof payload.errorCode === "string"
+        ? `WINDOWS_APP_WINDOW_MOVE_FAILED:${payload.errorCode}`
+        : "WINDOWS_APP_WINDOW_MOVE_FAILED",
+    );
+  }
+  if (status === "boundsUnavailable") {
+    throw new Error(
+      typeof payload.errorCode === "string"
+        ? `WINDOWS_APP_WINDOW_MOVE_BOUNDS_UNAVAILABLE:${payload.errorCode}`
+        : "WINDOWS_APP_WINDOW_MOVE_BOUNDS_UNAVAILABLE",
+    );
+  }
+
+  return {
+    moved: payload.moved,
+    bounds: parseWindowBoundsPayload(payload.bounds, "WINDOWS_APP_WINDOW_MOVE"),
+  };
+}
+
+async function moveWindowViaPowerShell(params: WindowsWindowMoveParams): Promise<WindowsWindowMoveResult> {
+  assertWindowsHost("WINDOWS_APP_WINDOW_MOVE_UNSUPPORTED_ON_NON_WINDOWS");
+  const payload = await runPowerShellJson(
+    buildWindowsWindowMovePowerShellScript({
+      windowId: params.windowId,
+      point: params.point,
+    }),
+    params.signal,
+    "WINDOWS_APP_WINDOW_MOVE",
+  );
+  return parseWindowMovePayload(payload);
+}
+
+function buildWindowsWindowResizePowerShellScript(params: Omit<WindowsWindowResizeParams, "signal">): string {
+  const escapedWindowId = escapePowerShellSingleQuotedString(params.windowId);
+  const width = Math.round(params.width);
+  const height = Math.round(params.height);
+  return [
+    "$ErrorActionPreference = 'Stop'",
+    ...buildWindowsWindowControlTypeDefinitionLines(),
+    `$windowId = '${escapedWindowId}'`,
+    "$match = [regex]::Match($windowId, '^hwnd-([0-9A-Fa-f]+)$')",
+    "if (-not $match.Success) {",
+    "  [PSCustomObject]@{ resized = $false; status = 'invalidWindowId' } | ConvertTo-Json -Compress",
+    "  return",
+    "}",
+    "$hWndValue = [Convert]::ToInt64($match.Groups[1].Value, 16)",
+    "$hWnd = [IntPtr]::new($hWndValue)",
+    "if (-not [LooksyWindowControlNative]::IsWindow($hWnd)) {",
+    "  [PSCustomObject]@{ resized = $false; status = 'windowNotFound' } | ConvertTo-Json -Compress",
+    "  return",
+    "}",
+    `$width = ${width}`,
+    `$height = ${height}`,
+    "if ($width -le 0 -or $height -le 0) {",
+    "  [PSCustomObject]@{ resized = $false; status = 'resizeFailed'; errorCode = 'invalidSize' } | ConvertTo-Json -Compress",
+    "  return",
+    "}",
+    "$rect = New-Object LooksyWindowControlNative+RECT",
+    "if (-not [LooksyWindowControlNative]::GetWindowRect($hWnd, [ref]$rect)) {",
+    "  [PSCustomObject]@{ resized = $false; status = 'boundsUnavailable'; errorCode = 'getWindowRectFailed' } | ConvertTo-Json -Compress",
+    "  return",
+    "}",
+    "$setPos = [LooksyWindowControlNative]::SetWindowPos($hWnd, [IntPtr]::Zero, $rect.Left, $rect.Top, $width, $height, 0x0014)",
+    "$status = if ($setPos) { 'resized' } else { 'resizeFailed' }",
+    "$errorCode = if ($setPos) { $null } else { [Runtime.InteropServices.Marshal]::GetLastWin32Error().ToString() }",
+    "$rectAfter = New-Object LooksyWindowControlNative+RECT",
+    "if (-not [LooksyWindowControlNative]::GetWindowRect($hWnd, [ref]$rectAfter)) {",
+    "  $status = 'boundsUnavailable'",
+    "  if (-not $errorCode) { $errorCode = 'getWindowRectFailed' }",
+    "}",
+    "$bounds = $null",
+    "if ($status -ne 'boundsUnavailable') {",
+    "  $afterWidth = [double]($rectAfter.Right - $rectAfter.Left)",
+    "  $afterHeight = [double]($rectAfter.Bottom - $rectAfter.Top)",
+    "  $bounds = [PSCustomObject]@{",
+    "    x = [double]$rectAfter.Left",
+    "    y = [double]$rectAfter.Top",
+    "    width = $afterWidth",
+    "    height = $afterHeight",
+    "    space = 'screen-physical'",
+    "  }",
+    "}",
+    "$payload = [ordered]@{ resized = [bool]$setPos; status = [string]$status; bounds = $bounds }",
+    "if ($errorCode) { $payload.errorCode = [string]$errorCode }",
+    "[PSCustomObject]$payload | ConvertTo-Json -Compress -Depth 6",
+  ].join("\n");
+}
+
+function parseWindowResizePayload(payload: unknown): WindowsWindowResizeResult {
+  if (!isRecord(payload) || typeof payload.resized !== "boolean") {
+    throw new Error("WINDOWS_APP_WINDOW_RESIZE_INVALID_JSON");
+  }
+  const status = typeof payload.status === "string" ? payload.status : null;
+  if (status === "invalidWindowId") {
+    throw new Error("WINDOWS_APP_WINDOW_RESIZE_INVALID_WINDOW_ID");
+  }
+  if (status === "windowNotFound") {
+    throw new Error("WINDOWS_APP_WINDOW_RESIZE_WINDOW_NOT_FOUND");
+  }
+  if (status === "resizeFailed") {
+    throw new Error(
+      typeof payload.errorCode === "string"
+        ? `WINDOWS_APP_WINDOW_RESIZE_FAILED:${payload.errorCode}`
+        : "WINDOWS_APP_WINDOW_RESIZE_FAILED",
+    );
+  }
+  if (status === "boundsUnavailable") {
+    throw new Error(
+      typeof payload.errorCode === "string"
+        ? `WINDOWS_APP_WINDOW_RESIZE_BOUNDS_UNAVAILABLE:${payload.errorCode}`
+        : "WINDOWS_APP_WINDOW_RESIZE_BOUNDS_UNAVAILABLE",
+    );
+  }
+
+  return {
+    resized: payload.resized,
+    bounds: parseWindowBoundsPayload(payload.bounds, "WINDOWS_APP_WINDOW_RESIZE"),
+  };
+}
+
+async function resizeWindowViaPowerShell(params: WindowsWindowResizeParams): Promise<WindowsWindowResizeResult> {
+  assertWindowsHost("WINDOWS_APP_WINDOW_RESIZE_UNSUPPORTED_ON_NON_WINDOWS");
+  const payload = await runPowerShellJson(
+    buildWindowsWindowResizePowerShellScript({
+      windowId: params.windowId,
+      width: params.width,
+      height: params.height,
+    }),
+    params.signal,
+    "WINDOWS_APP_WINDOW_RESIZE",
+  );
+  return parseWindowResizePayload(payload);
+}
+
+function buildWindowsWindowMinimizePowerShellScript(windowId: string): string {
+  const escapedWindowId = escapePowerShellSingleQuotedString(windowId);
+  return [
+    "$ErrorActionPreference = 'Stop'",
+    ...buildWindowsWindowControlTypeDefinitionLines(),
+    `$windowId = '${escapedWindowId}'`,
+    "$match = [regex]::Match($windowId, '^hwnd-([0-9A-Fa-f]+)$')",
+    "if (-not $match.Success) {",
+    "  [PSCustomObject]@{ minimized = $false; status = 'invalidWindowId' } | ConvertTo-Json -Compress",
+    "  return",
+    "}",
+    "$hWndValue = [Convert]::ToInt64($match.Groups[1].Value, 16)",
+    "$hWnd = [IntPtr]::new($hWndValue)",
+    "if (-not [LooksyWindowControlNative]::IsWindow($hWnd)) {",
+    "  [PSCustomObject]@{ minimized = $false; status = 'windowNotFound' } | ConvertTo-Json -Compress",
+    "  return",
+    "}",
+    "[void][LooksyWindowControlNative]::ShowWindowAsync($hWnd, 6)",
+    "Start-Sleep -Milliseconds 35",
+    "$minimized = [LooksyWindowControlNative]::IsIconic($hWnd)",
+    "$status = if ($minimized) { 'minimized' } else { 'minimizeFailed' }",
+    "[PSCustomObject]@{ minimized = [bool]$minimized; status = [string]$status } | ConvertTo-Json -Compress",
+  ].join("\n");
+}
+
+function parseWindowMinimizePayload(payload: unknown): boolean {
+  if (!isRecord(payload) || typeof payload.minimized !== "boolean") {
+    throw new Error("WINDOWS_APP_WINDOW_MINIMIZE_INVALID_JSON");
+  }
+  const status = typeof payload.status === "string" ? payload.status : null;
+  if (status === "invalidWindowId") {
+    throw new Error("WINDOWS_APP_WINDOW_MINIMIZE_INVALID_WINDOW_ID");
+  }
+  if (status === "windowNotFound") {
+    throw new Error("WINDOWS_APP_WINDOW_MINIMIZE_WINDOW_NOT_FOUND");
+  }
+  if (status === "minimizeFailed") {
+    throw new Error("WINDOWS_APP_WINDOW_MINIMIZE_FAILED");
+  }
+  return payload.minimized;
+}
+
+async function minimizeWindowViaPowerShell(params: WindowsWindowMinimizeParams): Promise<boolean> {
+  assertWindowsHost("WINDOWS_APP_WINDOW_MINIMIZE_UNSUPPORTED_ON_NON_WINDOWS");
+  const payload = await runPowerShellJson(
+    buildWindowsWindowMinimizePowerShellScript(params.windowId),
+    params.signal,
+    "WINDOWS_APP_WINDOW_MINIMIZE",
+  );
+  return parseWindowMinimizePayload(payload);
+}
+
+function buildWindowsWindowMaximizePowerShellScript(windowId: string): string {
+  const escapedWindowId = escapePowerShellSingleQuotedString(windowId);
+  return [
+    "$ErrorActionPreference = 'Stop'",
+    ...buildWindowsWindowControlTypeDefinitionLines(),
+    `$windowId = '${escapedWindowId}'`,
+    "$match = [regex]::Match($windowId, '^hwnd-([0-9A-Fa-f]+)$')",
+    "if (-not $match.Success) {",
+    "  [PSCustomObject]@{ maximized = $false; status = 'invalidWindowId' } | ConvertTo-Json -Compress",
+    "  return",
+    "}",
+    "$hWndValue = [Convert]::ToInt64($match.Groups[1].Value, 16)",
+    "$hWnd = [IntPtr]::new($hWndValue)",
+    "if (-not [LooksyWindowControlNative]::IsWindow($hWnd)) {",
+    "  [PSCustomObject]@{ maximized = $false; status = 'windowNotFound' } | ConvertTo-Json -Compress",
+    "  return",
+    "}",
+    "[void][LooksyWindowControlNative]::ShowWindowAsync($hWnd, 3)",
+    "Start-Sleep -Milliseconds 35",
+    "$maximized = [LooksyWindowControlNative]::IsZoomed($hWnd)",
+    "$status = if ($maximized) { 'maximized' } else { 'maximizeFailed' }",
+    "[PSCustomObject]@{ maximized = [bool]$maximized; status = [string]$status } | ConvertTo-Json -Compress",
+  ].join("\n");
+}
+
+function parseWindowMaximizePayload(payload: unknown): boolean {
+  if (!isRecord(payload) || typeof payload.maximized !== "boolean") {
+    throw new Error("WINDOWS_APP_WINDOW_MAXIMIZE_INVALID_JSON");
+  }
+  const status = typeof payload.status === "string" ? payload.status : null;
+  if (status === "invalidWindowId") {
+    throw new Error("WINDOWS_APP_WINDOW_MAXIMIZE_INVALID_WINDOW_ID");
+  }
+  if (status === "windowNotFound") {
+    throw new Error("WINDOWS_APP_WINDOW_MAXIMIZE_WINDOW_NOT_FOUND");
+  }
+  if (status === "maximizeFailed") {
+    throw new Error("WINDOWS_APP_WINDOW_MAXIMIZE_FAILED");
+  }
+  return payload.maximized;
+}
+
+async function maximizeWindowViaPowerShell(params: WindowsWindowMaximizeParams): Promise<boolean> {
+  assertWindowsHost("WINDOWS_APP_WINDOW_MAXIMIZE_UNSUPPORTED_ON_NON_WINDOWS");
+  const payload = await runPowerShellJson(
+    buildWindowsWindowMaximizePowerShellScript(params.windowId),
+    params.signal,
+    "WINDOWS_APP_WINDOW_MAXIMIZE",
+  );
+  return parseWindowMaximizePayload(payload);
+}
+
+function buildWindowsWindowClosePowerShellScript(windowId: string): string {
+  const escapedWindowId = escapePowerShellSingleQuotedString(windowId);
+  return [
+    "$ErrorActionPreference = 'Stop'",
+    ...buildWindowsWindowControlTypeDefinitionLines(),
+    `$windowId = '${escapedWindowId}'`,
+    "$match = [regex]::Match($windowId, '^hwnd-([0-9A-Fa-f]+)$')",
+    "if (-not $match.Success) {",
+    "  [PSCustomObject]@{ closed = $false; status = 'invalidWindowId' } | ConvertTo-Json -Compress",
+    "  return",
+    "}",
+    "$hWndValue = [Convert]::ToInt64($match.Groups[1].Value, 16)",
+    "$hWnd = [IntPtr]::new($hWndValue)",
+    "if (-not [LooksyWindowControlNative]::IsWindow($hWnd)) {",
+    "  [PSCustomObject]@{ closed = $false; status = 'windowNotFound' } | ConvertTo-Json -Compress",
+    "  return",
+    "}",
+    "$posted = [LooksyWindowControlNative]::PostMessageW($hWnd, [uint32]0x0010, [IntPtr]::Zero, [IntPtr]::Zero)",
+    "if (-not $posted) {",
+    "  $code = [Runtime.InteropServices.Marshal]::GetLastWin32Error().ToString()",
+    "  [PSCustomObject]@{ closed = $false; status = 'closeFailed'; errorCode = $code } | ConvertTo-Json -Compress",
+    "  return",
+    "}",
+    "$closed = $false",
+    "for ($attempt = 1; $attempt -le 8; $attempt++) {",
+    "  if (-not [LooksyWindowControlNative]::IsWindow($hWnd)) {",
+    "    $closed = $true",
+    "    break",
+    "  }",
+    "  Start-Sleep -Milliseconds 40",
+    "}",
+    "$status = if ($closed) { 'closed' } else { 'closePending' }",
+    "[PSCustomObject]@{ closed = [bool]$closed; status = [string]$status } | ConvertTo-Json -Compress",
+  ].join("\n");
+}
+
+function parseWindowClosePayload(payload: unknown): boolean {
+  if (!isRecord(payload) || typeof payload.closed !== "boolean") {
+    throw new Error("WINDOWS_APP_WINDOW_CLOSE_INVALID_JSON");
+  }
+  const status = typeof payload.status === "string" ? payload.status : null;
+  if (status === "invalidWindowId") {
+    throw new Error("WINDOWS_APP_WINDOW_CLOSE_INVALID_WINDOW_ID");
+  }
+  if (status === "windowNotFound") {
+    throw new Error("WINDOWS_APP_WINDOW_CLOSE_WINDOW_NOT_FOUND");
+  }
+  if (status === "closeFailed") {
+    throw new Error(
+      typeof payload.errorCode === "string"
+        ? `WINDOWS_APP_WINDOW_CLOSE_FAILED:${payload.errorCode}`
+        : "WINDOWS_APP_WINDOW_CLOSE_FAILED",
+    );
+  }
+  return payload.closed;
+}
+
+async function closeWindowViaPowerShell(params: WindowsWindowCloseParams): Promise<boolean> {
+  assertWindowsHost("WINDOWS_APP_WINDOW_CLOSE_UNSUPPORTED_ON_NON_WINDOWS");
+  const payload = await runPowerShellJson(
+    buildWindowsWindowClosePowerShellScript(params.windowId),
+    params.signal,
+    "WINDOWS_APP_WINDOW_CLOSE",
+  );
+  return parseWindowClosePayload(payload);
+}
+
 function buildWindowsListWindowsPowerShellScript(params: Omit<WindowsListWindowsParams, "signal">): string {
   const includeMinimized = toPowerShellBoolean(params.includeMinimized);
   const desktopOnly = toPowerShellBoolean(params.desktopOnly);
@@ -1320,6 +2297,388 @@ async function focusWindowViaPowerShell(params: WindowsFocusWindowParams): Promi
   const script = buildWindowsFocusWindowPowerShellScript(params.windowId);
   const payload = await runPowerShellJson(script, params.signal, "WINDOWS_APP_FOCUS_WINDOW");
   return parseFocusWindowPayload(payload);
+}
+
+type WindowsFindElementParams = {
+  selector: string;
+  windowId?: string;
+  signal: AbortSignal;
+};
+
+function buildWindowsElementFindPowerShellScript(params: Omit<WindowsFindElementParams, "signal">): string {
+  const escapedSelector = escapePowerShellSingleQuotedString(params.selector.trim());
+  const escapedWindowId = escapePowerShellSingleQuotedString((params.windowId ?? "").trim());
+  return [
+    "$ErrorActionPreference = 'Stop'",
+    "Add-Type -AssemblyName UIAutomationClient",
+    "Add-Type -AssemblyName UIAutomationTypes",
+    "if (-not (\"LooksyElementWindowNative\" -as [type])) {",
+    "  Add-Type -TypeDefinition @\"",
+    "using System;",
+    "using System.Runtime.InteropServices;",
+    "public static class LooksyElementWindowNative {",
+    "  [DllImport(\"user32.dll\", SetLastError = true)]",
+    "  public static extern bool IsWindow(IntPtr hWnd);",
+    "}",
+    "\"@",
+    "}",
+    `$selector = '${escapedSelector}'`,
+    `$windowId = '${escapedWindowId}'`,
+    "$normalizedSelector = $selector.Trim().ToLowerInvariant()",
+    "if ([string]::IsNullOrWhiteSpace($normalizedSelector)) {",
+    "  [PSCustomObject]@{ found = $false } | ConvertTo-Json -Compress",
+    "  return",
+    "}",
+    "$tokens = @()",
+    "foreach ($match in [regex]::Matches($normalizedSelector, '[a-z0-9]+')) {",
+    "  $tokens += $match.Value",
+    "}",
+    "if ($tokens.Length -eq 0) {",
+    "  [PSCustomObject]@{ found = $false } | ConvertTo-Json -Compress",
+    "  return",
+    "}",
+    "$expectedControlType = $null",
+    "switch ($tokens[0]) {",
+    "  'button' { $expectedControlType = [System.Windows.Automation.ControlType]::Button }",
+    "  'input' { $expectedControlType = [System.Windows.Automation.ControlType]::Edit }",
+    "  'textbox' { $expectedControlType = [System.Windows.Automation.ControlType]::Edit }",
+    "  'edit' { $expectedControlType = [System.Windows.Automation.ControlType]::Edit }",
+    "  'checkbox' { $expectedControlType = [System.Windows.Automation.ControlType]::CheckBox }",
+    "  'radio' { $expectedControlType = [System.Windows.Automation.ControlType]::RadioButton }",
+    "  'menuitem' { $expectedControlType = [System.Windows.Automation.ControlType]::MenuItem }",
+    "}",
+    "$root = [System.Windows.Automation.AutomationElement]::RootElement",
+    "if (-not [string]::IsNullOrWhiteSpace($windowId)) {",
+    "  $windowMatch = [regex]::Match($windowId, '^hwnd-([0-9A-Fa-f]+)$')",
+    "  if ($windowMatch.Success) {",
+    "    $hWndValue = [Convert]::ToInt64($windowMatch.Groups[1].Value, 16)",
+    "    $hWnd = [IntPtr]::new($hWndValue)",
+    "    if ([LooksyElementWindowNative]::IsWindow($hWnd)) {",
+    "      try {",
+    "        $candidateRoot = [System.Windows.Automation.AutomationElement]::FromHandle($hWnd)",
+    "        if ($candidateRoot -ne $null) { $root = $candidateRoot }",
+    "      } catch {",
+    "      }",
+    "    }",
+    "  }",
+    "}",
+    "$found = $root.FindAll([System.Windows.Automation.TreeScope]::Subtree, [System.Windows.Automation.Condition]::TrueCondition)",
+    "$best = $null",
+    "$bestScore = [double]-1",
+    "for ($index = 0; $index -lt $found.Count; $index++) {",
+    "  $candidate = $found.Item($index)",
+    "  if ($candidate -eq $null) { continue }",
+    "  $score = 0",
+    "  $name = ([string]$candidate.Current.Name).ToLowerInvariant()",
+    "  $automationId = ([string]$candidate.Current.AutomationId).ToLowerInvariant()",
+    "  $className = ([string]$candidate.Current.ClassName).ToLowerInvariant()",
+    "  $controlTypeName = ([string]$candidate.Current.ControlType.ProgrammaticName).ToLowerInvariant()",
+    "  if ($expectedControlType -ne $null -and $candidate.Current.ControlType -eq $expectedControlType) {",
+    "    $score += 3",
+    "  }",
+    "  foreach ($token in $tokens) {",
+    "    if ($name.Contains($token) -or $automationId.Contains($token) -or $className.Contains($token) -or $controlTypeName.Contains($token)) {",
+    "      $score += 1",
+    "    }",
+    "  }",
+    "  if ($score -gt $bestScore) {",
+    "    $best = $candidate",
+    "    $bestScore = [double]$score",
+    "  }",
+    "}",
+    "if ($best -eq $null -or $bestScore -lt 1) {",
+    "  [PSCustomObject]@{ found = $false } | ConvertTo-Json -Compress",
+    "  return",
+    "}",
+    "$runtimeParts = @()",
+    "foreach ($segment in $best.GetRuntimeId()) {",
+    "  $runtimeParts += ([string]$segment)",
+    "}",
+    "$runtimeId = [string]::Join('.', $runtimeParts)",
+    "$windowHandle = [int64]$best.Current.NativeWindowHandle",
+    "$resolvedWindowId = $null",
+    "if ($windowHandle -gt 0) {",
+    "  $resolvedWindowId = ('hwnd-{0:X}' -f $windowHandle)",
+    "}",
+    "$rect = $best.Current.BoundingRectangle",
+    "$rectPayload = $null",
+    "if (-not [double]::IsNaN($rect.Width) -and -not [double]::IsInfinity($rect.Width) -and $rect.Width -gt 0 -and -not [double]::IsNaN($rect.Height) -and -not [double]::IsInfinity($rect.Height) -and $rect.Height -gt 0) {",
+    "  $rectPayload = [PSCustomObject]@{",
+    "    x = [double]$rect.X",
+    "    y = [double]$rect.Y",
+    "    width = [double]$rect.Width",
+    "    height = [double]$rect.Height",
+    "    space = 'window-client'",
+    "  }",
+    "}",
+    "$payload = [ordered]@{",
+    "  found = $true",
+    "  elementId = ('uia-' + $runtimeId)",
+    "  runtimeId = $runtimeId",
+    "  confidence = [double][Math]::Min(1.0, 0.5 + ($bestScore / [Math]::Max(4.0, [double]$tokens.Length + 3.0)))",
+    "}",
+    "if (-not [string]::IsNullOrWhiteSpace($resolvedWindowId)) { $payload.windowId = $resolvedWindowId }",
+    "if ($rectPayload -ne $null) { $payload.rect = $rectPayload }",
+    "[PSCustomObject]$payload | ConvertTo-Json -Compress -Depth 8",
+  ].join("\n");
+}
+
+function parseWindowsElementFindPayload(
+  payload: unknown,
+  selector: string,
+  windowId?: string,
+): ResolvedWindowsElement | null {
+  if (!isRecord(payload) || typeof payload.found !== "boolean") {
+    throw new Error("WINDOWS_ELEMENT_FIND_INVALID_JSON");
+  }
+  if (!payload.found) {
+    return null;
+  }
+  if (
+    typeof payload.elementId !== "string" ||
+    payload.elementId.length === 0 ||
+    typeof payload.runtimeId !== "string" ||
+    payload.runtimeId.length === 0
+  ) {
+    throw new Error("WINDOWS_ELEMENT_FIND_INVALID_JSON");
+  }
+  const rect = payload.rect;
+  let parsedRect: ResolvedWindowsElement["rect"] | undefined;
+  if (isRecord(rect)) {
+    if (
+      typeof rect.x === "number" &&
+      Number.isFinite(rect.x) &&
+      typeof rect.y === "number" &&
+      Number.isFinite(rect.y) &&
+      typeof rect.width === "number" &&
+      Number.isFinite(rect.width) &&
+      rect.width > 0 &&
+      typeof rect.height === "number" &&
+      Number.isFinite(rect.height) &&
+      rect.height > 0
+    ) {
+      parsedRect = {
+        x: rect.x,
+        y: rect.y,
+        width: rect.width,
+        height: rect.height,
+        space: "window-client",
+      };
+    }
+  }
+  return {
+    elementId: payload.elementId,
+    selector,
+    windowId: typeof payload.windowId === "string" && payload.windowId.length > 0 ? payload.windowId : windowId,
+    runtimeId: payload.runtimeId,
+    ...(parsedRect ? { rect: parsedRect } : {}),
+  };
+}
+
+async function findElementViaPowerShell(params: WindowsFindElementParams): Promise<ResolvedWindowsElement | null> {
+  const payload = await runPowerShellJson(
+    buildWindowsElementFindPowerShellScript({
+      selector: params.selector,
+      windowId: params.windowId,
+    }),
+    params.signal,
+    "WINDOWS_ELEMENT_FIND",
+  );
+  return parseWindowsElementFindPayload(payload, params.selector, params.windowId);
+}
+
+type WindowsInvokeElementParams = {
+  runtimeId: string;
+  action: ElementInvokeCommand["action"];
+  signal: AbortSignal;
+};
+
+function buildWindowsElementInvokePowerShellScript(params: Omit<WindowsInvokeElementParams, "signal">): string {
+  const escapedRuntimeId = escapePowerShellSingleQuotedString(params.runtimeId);
+  const escapedAction = escapePowerShellSingleQuotedString(params.action);
+  return [
+    "$ErrorActionPreference = 'Stop'",
+    "Add-Type -AssemblyName UIAutomationClient",
+    "Add-Type -AssemblyName UIAutomationTypes",
+    `$runtimeId = '${escapedRuntimeId}'`,
+    `$action = '${escapedAction}'`,
+    "$found = [System.Windows.Automation.AutomationElement]::RootElement.FindAll(",
+    "  [System.Windows.Automation.TreeScope]::Subtree,",
+    "  [System.Windows.Automation.Condition]::TrueCondition",
+    ")",
+    "$target = $null",
+    "for ($index = 0; $index -lt $found.Count; $index++) {",
+    "  $candidate = $found.Item($index)",
+    "  if ($candidate -eq $null) { continue }",
+    "  $parts = @()",
+    "  foreach ($segment in $candidate.GetRuntimeId()) {",
+    "    $parts += ([string]$segment)",
+    "  }",
+    "  if ([string]::Join('.', $parts) -eq $runtimeId) {",
+    "    $target = $candidate",
+    "    break",
+    "  }",
+    "}",
+    "if ($target -eq $null) {",
+    "  [PSCustomObject]@{ invoked = $false; status = 'notFound' } | ConvertTo-Json -Compress",
+    "  return",
+    "}",
+    "$invoked = $false",
+    "$status = 'unsupportedAction'",
+    "switch ($action) {",
+    "  'press' {",
+    "    try {",
+    "      $pattern = $null",
+    "      if ($target.TryGetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern, [ref]$pattern)) {",
+    "        $invokePattern = [System.Windows.Automation.InvokePattern]$pattern",
+    "        $invokePattern.Invoke()",
+    "        $invoked = $true",
+    "        $status = 'invoked'",
+    "      } else {",
+    "        $status = 'invokePatternUnavailable'",
+    "      }",
+    "    } catch {",
+    "      $status = 'invokeFailed'",
+    "    }",
+    "  }",
+    "  'focus' {",
+    "    try {",
+    "      $target.SetFocus()",
+    "      $invoked = $true",
+    "      $status = 'focused'",
+    "    } catch {",
+    "      $status = 'focusFailed'",
+    "    }",
+    "  }",
+    "  'expand' {",
+    "    try {",
+    "      $pattern = $null",
+    "      if ($target.TryGetCurrentPattern([System.Windows.Automation.ExpandCollapsePattern]::Pattern, [ref]$pattern)) {",
+    "        $expandPattern = [System.Windows.Automation.ExpandCollapsePattern]$pattern",
+    "        $expandPattern.Expand()",
+    "        $invoked = $true",
+    "        $status = 'expanded'",
+    "      } else {",
+    "        $status = 'expandPatternUnavailable'",
+    "      }",
+    "    } catch {",
+    "      $status = 'expandFailed'",
+    "    }",
+    "  }",
+    "  'collapse' {",
+    "    try {",
+    "      $pattern = $null",
+    "      if ($target.TryGetCurrentPattern([System.Windows.Automation.ExpandCollapsePattern]::Pattern, [ref]$pattern)) {",
+    "        $expandPattern = [System.Windows.Automation.ExpandCollapsePattern]$pattern",
+    "        $expandPattern.Collapse()",
+    "        $invoked = $true",
+    "        $status = 'collapsed'",
+    "      } else {",
+    "        $status = 'expandPatternUnavailable'",
+    "      }",
+    "    } catch {",
+    "      $status = 'collapseFailed'",
+    "    }",
+    "  }",
+    "}",
+    "[PSCustomObject]@{ invoked = [bool]$invoked; status = [string]$status } | ConvertTo-Json -Compress",
+  ].join("\n");
+}
+
+function parseWindowsElementInvokePayload(payload: unknown): boolean {
+  if (!isRecord(payload) || typeof payload.invoked !== "boolean") {
+    throw new Error("WINDOWS_ELEMENT_INVOKE_INVALID_JSON");
+  }
+  return payload.invoked;
+}
+
+async function invokeElementViaPowerShell(params: WindowsInvokeElementParams): Promise<boolean> {
+  const payload = await runPowerShellJson(
+    buildWindowsElementInvokePowerShellScript({
+      runtimeId: params.runtimeId,
+      action: params.action,
+    }),
+    params.signal,
+    "WINDOWS_ELEMENT_INVOKE",
+  );
+  return parseWindowsElementInvokePayload(payload);
+}
+
+type WindowsSetValueParams = {
+  runtimeId: string;
+  value: string;
+  signal: AbortSignal;
+};
+
+function buildWindowsElementSetValuePowerShellScript(params: Omit<WindowsSetValueParams, "signal">): string {
+  const escapedRuntimeId = escapePowerShellSingleQuotedString(params.runtimeId);
+  const valueBase64 = Buffer.from(params.value, "utf16le").toString("base64");
+  return [
+    "$ErrorActionPreference = 'Stop'",
+    "Add-Type -AssemblyName UIAutomationClient",
+    "Add-Type -AssemblyName UIAutomationTypes",
+    `$runtimeId = '${escapedRuntimeId}'`,
+    `$valueBase64 = '${valueBase64}'`,
+    "$value = [System.Text.Encoding]::Unicode.GetString([Convert]::FromBase64String($valueBase64))",
+    "$found = [System.Windows.Automation.AutomationElement]::RootElement.FindAll(",
+    "  [System.Windows.Automation.TreeScope]::Subtree,",
+    "  [System.Windows.Automation.Condition]::TrueCondition",
+    ")",
+    "$target = $null",
+    "for ($index = 0; $index -lt $found.Count; $index++) {",
+    "  $candidate = $found.Item($index)",
+    "  if ($candidate -eq $null) { continue }",
+    "  $parts = @()",
+    "  foreach ($segment in $candidate.GetRuntimeId()) {",
+    "    $parts += ([string]$segment)",
+    "  }",
+    "  if ([string]::Join('.', $parts) -eq $runtimeId) {",
+    "    $target = $candidate",
+    "    break",
+    "  }",
+    "}",
+    "if ($target -eq $null) {",
+    "  [PSCustomObject]@{ valueSet = $false; status = 'notFound' } | ConvertTo-Json -Compress",
+    "  return",
+    "}",
+    "$valueSet = $false",
+    "$status = 'valuePatternUnavailable'",
+    "try {",
+    "  $pattern = $null",
+    "  if ($target.TryGetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern, [ref]$pattern)) {",
+    "    $valuePattern = [System.Windows.Automation.ValuePattern]$pattern",
+    "    if (-not $valuePattern.Current.IsReadOnly) {",
+    "      $valuePattern.SetValue($value)",
+    "      $valueSet = $true",
+    "      $status = 'valueSet'",
+    "    } else {",
+    "      $status = 'readOnly'",
+    "    }",
+    "  }",
+    "} catch {",
+    "  $status = 'setValueFailed'",
+    "}",
+    "[PSCustomObject]@{ valueSet = [bool]$valueSet; status = [string]$status } | ConvertTo-Json -Compress",
+  ].join("\n");
+}
+
+function parseWindowsElementSetValuePayload(payload: unknown): boolean {
+  if (!isRecord(payload) || typeof payload.valueSet !== "boolean") {
+    throw new Error("WINDOWS_ELEMENT_SET_VALUE_INVALID_JSON");
+  }
+  return payload.valueSet;
+}
+
+async function setElementValueViaPowerShell(params: WindowsSetValueParams): Promise<boolean> {
+  const payload = await runPowerShellJson(
+    buildWindowsElementSetValuePowerShellScript({
+      runtimeId: params.runtimeId,
+      value: params.value,
+    }),
+    params.signal,
+    "WINDOWS_ELEMENT_SET_VALUE",
+  );
+  return parseWindowsElementSetValuePayload(payload);
 }
 
 async function captureWindowsScreenViaPowerShell(params: WindowsCaptureScreenParams): Promise<Buffer> {
@@ -1646,9 +3005,30 @@ export const __windowsCaptureTestInternals = {
   buildWindowsPressKeyPowerShellScript,
   buildWindowsPressKeySendInputPlan,
   buildWindowsScrollPowerShellScript,
+  buildWindowsDragPowerShellScript,
+  buildWindowsSwipePowerShellScript,
+  buildWindowsClipboardReadPowerShellScript,
+  parseWindowsClipboardReadPayload,
+  buildWindowsClipboardWritePowerShellScript,
   buildWindowsListWindowsPowerShellScript,
   buildWindowsFocusWindowPowerShellScript,
   parseFocusWindowPayload,
+  buildWindowsWindowMovePowerShellScript,
+  parseWindowMovePayload,
+  buildWindowsWindowResizePowerShellScript,
+  parseWindowResizePayload,
+  buildWindowsWindowMinimizePowerShellScript,
+  parseWindowMinimizePayload,
+  buildWindowsWindowMaximizePowerShellScript,
+  parseWindowMaximizePayload,
+  buildWindowsWindowClosePowerShellScript,
+  parseWindowClosePayload,
+  buildWindowsElementFindPowerShellScript,
+  parseWindowsElementFindPayload,
+  buildWindowsElementInvokePowerShellScript,
+  parseWindowsElementInvokePayload,
+  buildWindowsElementSetValuePowerShellScript,
+  parseWindowsElementSetValuePayload,
   buildWindowsScreenDipToPhysicalPointPowerShellScript,
   parseWindowsScreenDipToPhysicalPointPayload,
 };

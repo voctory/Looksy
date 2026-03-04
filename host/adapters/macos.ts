@@ -155,6 +155,14 @@ export class MacOSAdapter implements HostAdapter {
           ...(command.point ? { point: command.point } : {}),
           ...(command.modifiers && command.modifiers.length > 0 ? { modifiers: command.modifiers } : {}),
         };
+      case "input.drag":
+        throw new Error("MACOS_INPUT_DRAG_UNSUPPORTED");
+      case "input.swipe":
+        throw new Error("MACOS_INPUT_SWIPE_UNSUPPORTED");
+      case "clipboard.read":
+        throw new Error("MACOS_CLIPBOARD_READ_UNSUPPORTED");
+      case "clipboard.write":
+        throw new Error("MACOS_CLIPBOARD_WRITE_UNSUPPORTED");
       case "app.listWindows": {
         const windows = command.desktopOnly
           ? this.windows.filter((windowInfo) => windowInfo.appName !== "System Settings")
@@ -175,6 +183,16 @@ export class MacOSAdapter implements HostAdapter {
           focused: Boolean(existing),
         };
       }
+      case "app.windowMove":
+        throw new Error("MACOS_APP_WINDOW_MOVE_UNSUPPORTED");
+      case "app.windowResize":
+        throw new Error("MACOS_APP_WINDOW_RESIZE_UNSUPPORTED");
+      case "app.windowMinimize":
+        throw new Error("MACOS_APP_WINDOW_MINIMIZE_UNSUPPORTED");
+      case "app.windowMaximize":
+        throw new Error("MACOS_APP_WINDOW_MAXIMIZE_UNSUPPORTED");
+      case "app.windowClose":
+        throw new Error("MACOS_APP_WINDOW_CLOSE_UNSUPPORTED");
       case "browser.navigate": {
         const navigatedAt = new Date().toISOString();
         this.browserUrl = command.url;

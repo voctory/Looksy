@@ -37,7 +37,7 @@ async function issueCommand(core: HostCore, sessionId: string, requestId: string
 }
 
 describe("WindowsAdapter automation commands", () => {
-  it("uses injected automation seams for input and app commands", async () => {
+  it("uses injected automation seams for input, clipboard, and app commands", async () => {
     const windows: WindowInfo[] = [
       {
         windowId: "hwnd-111",
@@ -58,8 +58,35 @@ describe("WindowsAdapter automation commands", () => {
     const typeText = vi.fn(async () => undefined);
     const pressKey = vi.fn(async () => undefined);
     const scroll = vi.fn(async () => undefined);
+    const drag = vi.fn(async () => undefined);
+    const swipe = vi.fn(async () => undefined);
+    const clipboardRead = vi.fn(async () => "clip-text");
+    const clipboardWrite = vi.fn(async () => undefined);
     const listWindows = vi.fn(async () => windows);
     const focusWindow = vi.fn(async () => true);
+    const windowMove = vi.fn(async () => ({
+      moved: true,
+      bounds: {
+        x: 160,
+        y: 240,
+        width: 1200,
+        height: 900,
+        space: "screen-physical" as const,
+      },
+    }));
+    const windowResize = vi.fn(async () => ({
+      resized: true,
+      bounds: {
+        x: 160,
+        y: 240,
+        width: 900,
+        height: 600,
+        space: "screen-physical" as const,
+      },
+    }));
+    const windowMinimize = vi.fn(async () => true);
+    const windowMaximize = vi.fn(async () => true);
+    const windowClose = vi.fn(async () => false);
     const screenDipToPhysicalPoint = vi.fn(async ({ point }: { point: { x: number; y: number; space: "screen-dip" } }) => ({
       x: point.x * 2,
       y: point.y * 3,
@@ -73,8 +100,17 @@ describe("WindowsAdapter automation commands", () => {
           typeText,
           pressKey,
           scroll,
+          drag,
+          swipe,
+          clipboardRead,
+          clipboardWrite,
           listWindows,
           focusWindow,
+          windowMove,
+          windowResize,
+          windowMinimize,
+          windowMaximize,
+          windowClose,
         },
       }),
       authToken: AUTH_TOKEN,
@@ -130,6 +166,87 @@ describe("WindowsAdapter automation commands", () => {
     });
     expect(scrollResponse.ok).toBe(true);
 
+    const dragResponse = await issueCommand(core, sessionId, "cmd-windows-drag", {
+      type: "input.drag",
+      start: {
+        x: 30,
+        y: 10,
+        space: "screen-dip",
+      },
+      end: {
+        x: 40,
+        y: 20,
+        space: "screen-dip",
+      },
+      button: "left",
+      modifiers: ["Shift"],
+    });
+    expect(dragResponse.ok).toBe(true);
+    if (!dragResponse.ok || dragResponse.result.type !== "input.dragged") {
+      return;
+    }
+    expect(dragResponse.result.start).toEqual({
+      x: 60,
+      y: 30,
+      space: "screen-physical",
+    });
+    expect(dragResponse.result.end).toEqual({
+      x: 80,
+      y: 60,
+      space: "screen-physical",
+    });
+    expect(dragResponse.result.button).toBe("left");
+    expect(dragResponse.result.modifiers).toEqual(["Shift"]);
+
+    const swipeResponse = await issueCommand(core, sessionId, "cmd-windows-swipe", {
+      type: "input.swipe",
+      start: {
+        x: 2,
+        y: 3,
+        space: "screen-dip",
+      },
+      end: {
+        x: 10,
+        y: 12,
+        space: "screen-dip",
+      },
+      modifiers: ["Control"],
+    });
+    expect(swipeResponse.ok).toBe(true);
+    if (!swipeResponse.ok || swipeResponse.result.type !== "input.swiped") {
+      return;
+    }
+    expect(swipeResponse.result.start).toEqual({
+      x: 4,
+      y: 9,
+      space: "screen-physical",
+    });
+    expect(swipeResponse.result.end).toEqual({
+      x: 20,
+      y: 36,
+      space: "screen-physical",
+    });
+    expect(swipeResponse.result.modifiers).toEqual(["Control"]);
+
+    const clipboardReadResponse = await issueCommand(core, sessionId, "cmd-windows-clipboard-read", {
+      type: "clipboard.read",
+    });
+    expect(clipboardReadResponse.ok).toBe(true);
+    if (!clipboardReadResponse.ok || clipboardReadResponse.result.type !== "clipboard.read") {
+      return;
+    }
+    expect(clipboardReadResponse.result.text).toBe("clip-text");
+
+    const clipboardWriteResponse = await issueCommand(core, sessionId, "cmd-windows-clipboard-write", {
+      type: "clipboard.write",
+      text: "new-clip",
+    });
+    expect(clipboardWriteResponse.ok).toBe(true);
+    if (!clipboardWriteResponse.ok || clipboardWriteResponse.result.type !== "clipboard.written") {
+      return;
+    }
+    expect(clipboardWriteResponse.result.textLength).toBe(8);
+
     const listWindowsResponse = await issueCommand(core, sessionId, "cmd-windows-list", {
       type: "app.listWindows",
       includeMinimized: true,
@@ -150,6 +267,76 @@ describe("WindowsAdapter automation commands", () => {
       return;
     }
     expect(focusWindowResponse.result.focused).toBe(true);
+
+    const windowMoveResponse = await issueCommand(core, sessionId, "cmd-windows-window-move", {
+      type: "app.windowMove",
+      windowId: "hwnd-111",
+      point: {
+        x: 80,
+        y: 80,
+        space: "screen-dip",
+      },
+    });
+    expect(windowMoveResponse.ok).toBe(true);
+    if (!windowMoveResponse.ok || windowMoveResponse.result.type !== "app.windowMoved") {
+      return;
+    }
+    expect(windowMoveResponse.result.bounds).toEqual({
+      x: 160,
+      y: 240,
+      width: 1200,
+      height: 900,
+      space: "screen-physical",
+    });
+
+    const windowResizeResponse = await issueCommand(core, sessionId, "cmd-windows-window-resize", {
+      type: "app.windowResize",
+      windowId: "hwnd-111",
+      width: 450,
+      height: 200,
+      space: "screen-dip",
+    });
+    expect(windowResizeResponse.ok).toBe(true);
+    if (!windowResizeResponse.ok || windowResizeResponse.result.type !== "app.windowResized") {
+      return;
+    }
+    expect(windowResizeResponse.result.bounds).toEqual({
+      x: 160,
+      y: 240,
+      width: 900,
+      height: 600,
+      space: "screen-physical",
+    });
+
+    const windowMinimizeResponse = await issueCommand(core, sessionId, "cmd-windows-window-minimize", {
+      type: "app.windowMinimize",
+      windowId: "hwnd-111",
+    });
+    expect(windowMinimizeResponse.ok).toBe(true);
+    if (!windowMinimizeResponse.ok || windowMinimizeResponse.result.type !== "app.windowMinimized") {
+      return;
+    }
+    expect(windowMinimizeResponse.result.minimized).toBe(true);
+
+    const windowMaximizeResponse = await issueCommand(core, sessionId, "cmd-windows-window-maximize", {
+      type: "app.windowMaximize",
+      windowId: "hwnd-111",
+    });
+    expect(windowMaximizeResponse.ok).toBe(true);
+    if (!windowMaximizeResponse.ok || windowMaximizeResponse.result.type !== "app.windowMaximized") {
+      return;
+    }
+    expect(windowMaximizeResponse.result.maximized).toBe(true);
+
+    const windowCloseResponse = await issueCommand(core, sessionId, "cmd-windows-window-close", {
+      type: "app.windowClose",
+      windowId: "hwnd-111",
+    });
+    expect(windowCloseResponse.ok).toBe(true);
+    if (!windowCloseResponse.ok || windowCloseResponse.result.type !== "app.windowClosed") {
+      return;
+    }
+    expect(windowCloseResponse.result.closed).toBe(false);
 
     expect(moveMouse).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -194,6 +381,43 @@ describe("WindowsAdapter automation commands", () => {
         modifiers: ["Shift"],
       }),
     );
+    expect(drag).toHaveBeenCalledWith(
+      expect.objectContaining({
+        start: {
+          x: 60,
+          y: 30,
+          space: "screen-physical",
+        },
+        end: {
+          x: 80,
+          y: 60,
+          space: "screen-physical",
+        },
+        button: "left",
+        modifiers: ["Shift"],
+      }),
+    );
+    expect(swipe).toHaveBeenCalledWith(
+      expect.objectContaining({
+        start: {
+          x: 4,
+          y: 9,
+          space: "screen-physical",
+        },
+        end: {
+          x: 20,
+          y: 36,
+          space: "screen-physical",
+        },
+        modifiers: ["Control"],
+      }),
+    );
+    expect(clipboardRead).toHaveBeenCalledTimes(1);
+    expect(clipboardWrite).toHaveBeenCalledWith(
+      expect.objectContaining({
+        text: "new-clip",
+      }),
+    );
     expect(listWindows).toHaveBeenCalledWith(
       expect.objectContaining({
         includeMinimized: true,
@@ -205,7 +429,39 @@ describe("WindowsAdapter automation commands", () => {
         windowId: "hwnd-111",
       }),
     );
-    expect(screenDipToPhysicalPoint).toHaveBeenCalledTimes(3);
+    expect(windowMove).toHaveBeenCalledWith(
+      expect.objectContaining({
+        windowId: "hwnd-111",
+        point: {
+          x: 160,
+          y: 240,
+          space: "screen-physical",
+        },
+      }),
+    );
+    expect(windowResize).toHaveBeenCalledWith(
+      expect.objectContaining({
+        windowId: "hwnd-111",
+        width: 900,
+        height: 600,
+      }),
+    );
+    expect(windowMinimize).toHaveBeenCalledWith(
+      expect.objectContaining({
+        windowId: "hwnd-111",
+      }),
+    );
+    expect(windowMaximize).toHaveBeenCalledWith(
+      expect.objectContaining({
+        windowId: "hwnd-111",
+      }),
+    );
+    expect(windowClose).toHaveBeenCalledWith(
+      expect.objectContaining({
+        windowId: "hwnd-111",
+      }),
+    );
+    expect(screenDipToPhysicalPoint).toHaveBeenCalledTimes(9);
     expect(screenDipToPhysicalPoint).toHaveBeenNthCalledWith(
       1,
       expect.objectContaining({
@@ -236,18 +492,104 @@ describe("WindowsAdapter automation commands", () => {
         },
       }),
     );
+    expect(screenDipToPhysicalPoint).toHaveBeenNthCalledWith(
+      4,
+      expect.objectContaining({
+        point: {
+          x: 30,
+          y: 10,
+          space: "screen-dip",
+        },
+      }),
+    );
+    expect(screenDipToPhysicalPoint).toHaveBeenNthCalledWith(
+      5,
+      expect.objectContaining({
+        point: {
+          x: 40,
+          y: 20,
+          space: "screen-dip",
+        },
+      }),
+    );
+    expect(screenDipToPhysicalPoint).toHaveBeenNthCalledWith(
+      6,
+      expect.objectContaining({
+        point: {
+          x: 2,
+          y: 3,
+          space: "screen-dip",
+        },
+      }),
+    );
+    expect(screenDipToPhysicalPoint).toHaveBeenNthCalledWith(
+      7,
+      expect.objectContaining({
+        point: {
+          x: 10,
+          y: 12,
+          space: "screen-dip",
+        },
+      }),
+    );
+    expect(screenDipToPhysicalPoint).toHaveBeenNthCalledWith(
+      8,
+      expect.objectContaining({
+        point: {
+          x: 80,
+          y: 80,
+          space: "screen-dip",
+        },
+      }),
+    );
+    expect(screenDipToPhysicalPoint).toHaveBeenNthCalledWith(
+      9,
+      expect.objectContaining({
+        point: {
+          x: 450,
+          y: 200,
+          space: "screen-dip",
+        },
+      }),
+    );
   });
 
   it("rejects window-client point space for global input commands", async () => {
     const moveMouse = vi.fn(async () => undefined);
     const click = vi.fn(async () => undefined);
     const scroll = vi.fn(async () => undefined);
+    const drag = vi.fn(async () => undefined);
+    const swipe = vi.fn(async () => undefined);
+    const windowMove = vi.fn(async () => ({
+      moved: true,
+      bounds: {
+        x: 0,
+        y: 0,
+        width: 100,
+        height: 100,
+        space: "screen-physical" as const,
+      },
+    }));
+    const windowResize = vi.fn(async () => ({
+      resized: true,
+      bounds: {
+        x: 0,
+        y: 0,
+        width: 100,
+        height: 100,
+        space: "screen-physical" as const,
+      },
+    }));
     const core = new HostCore({
       adapter: new WindowsAdapter({
         automation: {
           moveMouse,
           click,
           scroll,
+          drag,
+          swipe,
+          windowMove,
+          windowResize,
         },
       }),
       authToken: AUTH_TOKEN,
@@ -298,6 +640,64 @@ describe("WindowsAdapter automation commands", () => {
           },
         },
       },
+      {
+        requestId: "cmd-window-client-drag-start",
+        expectedMessage: "WINDOWS_INPUT_DRAG_START_WINDOW_CLIENT_UNSUPPORTED",
+        command: {
+          type: "input.drag",
+          start: {
+            x: 7,
+            y: 8,
+            space: "window-client",
+          },
+          end: {
+            x: 9,
+            y: 10,
+            space: "screen-dip",
+          },
+        },
+      },
+      {
+        requestId: "cmd-window-client-swipe-end",
+        expectedMessage: "WINDOWS_INPUT_SWIPE_END_WINDOW_CLIENT_UNSUPPORTED",
+        command: {
+          type: "input.swipe",
+          start: {
+            x: 11,
+            y: 12,
+            space: "screen-dip",
+          },
+          end: {
+            x: 13,
+            y: 14,
+            space: "window-client",
+          },
+        },
+      },
+      {
+        requestId: "cmd-window-client-window-move",
+        expectedMessage: "WINDOWS_APP_WINDOW_MOVE_WINDOW_CLIENT_UNSUPPORTED",
+        command: {
+          type: "app.windowMove",
+          windowId: "hwnd-111",
+          point: {
+            x: 1,
+            y: 2,
+            space: "window-client",
+          },
+        },
+      },
+      {
+        requestId: "cmd-window-client-window-resize",
+        expectedMessage: "WINDOWS_APP_WINDOW_RESIZE_WINDOW_CLIENT_UNSUPPORTED",
+        command: {
+          type: "app.windowResize",
+          windowId: "hwnd-111",
+          width: 100,
+          height: 200,
+          space: "window-client",
+        },
+      },
     ];
 
     for (const testCase of commands) {
@@ -317,6 +717,10 @@ describe("WindowsAdapter automation commands", () => {
     expect(moveMouse).not.toHaveBeenCalled();
     expect(click).not.toHaveBeenCalled();
     expect(scroll).not.toHaveBeenCalled();
+    expect(drag).not.toHaveBeenCalled();
+    expect(swipe).not.toHaveBeenCalled();
+    expect(windowMove).not.toHaveBeenCalled();
+    expect(windowResize).not.toHaveBeenCalled();
   });
 
   it("builds PowerShell scripts for pointer, windowing, and SendInput execution", () => {
@@ -401,6 +805,90 @@ describe("WindowsAdapter automation commands", () => {
     expect(scrollScript).toContain("Send-LooksyInput -inputs $inputs.ToArray()");
     expect(scrollScript).not.toContain("keybd_event");
 
+    const dragScript = __windowsCaptureTestInternals.buildWindowsDragPowerShellScript({
+      start: {
+        x: 10,
+        y: 20,
+        space: "screen-physical",
+      },
+      end: {
+        x: 300,
+        y: 440,
+        space: "screen-physical",
+      },
+      button: "left",
+      modifiers: ["Control"],
+    });
+    expect(dragScript).toContain("WINDOWS_INPUT_DRAG");
+    expect(dragScript).toContain("SetCursorPos");
+    expect(dragScript).toContain("$steps = [int][Math]::Ceiling($distance / 18.0)");
+    expect(dragScript).toContain("New-LooksyMouseInput -flags $mouseDownFlag");
+    expect(dragScript).toContain("Send-LooksyInput -inputs $modifierDownInputs.ToArray()");
+
+    const swipeScript = __windowsCaptureTestInternals.buildWindowsSwipePowerShellScript({
+      start: {
+        x: 10,
+        y: 20,
+        space: "screen-physical",
+      },
+      end: {
+        x: 30,
+        y: 40,
+        space: "screen-physical",
+      },
+      modifiers: ["Shift"],
+    });
+    expect(swipeScript).toContain("WINDOWS_INPUT_SWIPE");
+    expect(swipeScript).toContain("New-LooksyMouseInput -flags $mouseDownFlag");
+
+    const clipboardReadScript = __windowsCaptureTestInternals.buildWindowsClipboardReadPowerShellScript();
+    expect(clipboardReadScript).toContain("Get-Clipboard -Raw");
+    expect(clipboardReadScript).toContain("ConvertTo-Json -Compress");
+
+    const clipboardWriteScript = __windowsCaptureTestInternals.buildWindowsClipboardWritePowerShellScript("O'Brien");
+    expect(clipboardWriteScript).toContain("FromBase64String");
+    expect(clipboardWriteScript).toContain("Set-Clipboard -Value $text -ErrorAction Stop");
+
+    const windowMoveScript = __windowsCaptureTestInternals.buildWindowsWindowMovePowerShellScript({
+      windowId: "hwnd-ABC",
+      point: {
+        x: 10,
+        y: 20,
+        space: "screen-physical",
+      },
+    });
+    expect(windowMoveScript).toContain("SetWindowPos");
+    expect(windowMoveScript).toContain("status = if ($setPos) { 'moved' } else { 'moveFailed' }");
+    expect(windowMoveScript).toContain("^hwnd-([0-9A-Fa-f]+)$");
+
+    const windowResizeScript = __windowsCaptureTestInternals.buildWindowsWindowResizePowerShellScript({
+      windowId: "hwnd-ABC",
+      width: 800,
+      height: 600,
+    });
+    expect(windowResizeScript).toContain("SetWindowPos");
+    expect(windowResizeScript).toContain("status = if ($setPos) { 'resized' } else { 'resizeFailed' }");
+
+    const windowMinScript = __windowsCaptureTestInternals.buildWindowsWindowMinimizePowerShellScript("hwnd-ABC");
+    expect(windowMinScript).toContain("ShowWindowAsync($hWnd, 6)");
+    expect(windowMinScript).toContain("IsIconic");
+
+    const windowMaxScript = __windowsCaptureTestInternals.buildWindowsWindowMaximizePowerShellScript("hwnd-ABC");
+    expect(windowMaxScript).toContain("ShowWindowAsync($hWnd, 3)");
+    expect(windowMaxScript).toContain("IsZoomed");
+
+    const windowCloseScript = __windowsCaptureTestInternals.buildWindowsWindowClosePowerShellScript("hwnd-ABC");
+    expect(windowCloseScript).toContain("PostMessageW");
+    expect(windowCloseScript).toContain("status = if ($closed) { 'closed' } else { 'closePending' }");
+
+    const elementFindScript = __windowsCaptureTestInternals.buildWindowsElementFindPowerShellScript({
+      selector: "button.save",
+      windowId: "hwnd-ABC",
+    });
+    expect(elementFindScript).toContain("Add-Type -AssemblyName UIAutomationClient");
+    expect(elementFindScript).toContain("FindAll([System.Windows.Automation.TreeScope]::Subtree");
+    expect(elementFindScript).toContain("$tokens = @()");
+
     const dipPointScript = __windowsCaptureTestInternals.buildWindowsScreenDipToPhysicalPointPowerShellScript({
       x: 111,
       y: 222,
@@ -416,7 +904,7 @@ describe("WindowsAdapter automation commands", () => {
     expect(dipPointScript).toContain("[PSCustomObject]@{ x = [int]$x; y = [int]$y; scale = [double]$scale } | ConvertTo-Json -Compress");
   });
 
-  it("parses focus and dip conversion payloads with typed errors", () => {
+  it("parses focus, window, clipboard, element, and dip payloads with typed errors", () => {
     expect(
       __windowsCaptureTestInternals.parseFocusWindowPayload({
         focused: true,
@@ -447,6 +935,187 @@ describe("WindowsAdapter automation commands", () => {
         errorCode: "foregroundWindowDidNotMatch",
       }),
     ).toThrowError("WINDOWS_APP_FOCUS_WINDOW_FOCUS_NOT_ACQUIRED:foregroundWindowDidNotMatch");
+
+    expect(
+      __windowsCaptureTestInternals.parseWindowsClipboardReadPayload({
+        text: "hello",
+      }),
+    ).toBe("hello");
+    expect(() =>
+      __windowsCaptureTestInternals.parseWindowsClipboardReadPayload({
+        text: 123,
+      }),
+    ).toThrowError("WINDOWS_CLIPBOARD_READ_INVALID_JSON");
+
+    expect(
+      __windowsCaptureTestInternals.parseWindowMovePayload({
+        moved: true,
+        status: "moved",
+        bounds: {
+          x: 1,
+          y: 2,
+          width: 300,
+          height: 400,
+          space: "screen-physical",
+        },
+      }),
+    ).toEqual({
+      moved: true,
+      bounds: {
+        x: 1,
+        y: 2,
+        width: 300,
+        height: 400,
+        space: "screen-physical",
+      },
+    });
+    expect(() =>
+      __windowsCaptureTestInternals.parseWindowMovePayload({
+        moved: false,
+        status: "invalidWindowId",
+      }),
+    ).toThrowError("WINDOWS_APP_WINDOW_MOVE_INVALID_WINDOW_ID");
+    expect(() =>
+      __windowsCaptureTestInternals.parseWindowMovePayload({
+        moved: false,
+        status: "moveFailed",
+        errorCode: "5",
+      }),
+    ).toThrowError("WINDOWS_APP_WINDOW_MOVE_FAILED:5");
+
+    expect(
+      __windowsCaptureTestInternals.parseWindowResizePayload({
+        resized: true,
+        status: "resized",
+        bounds: {
+          x: 10,
+          y: 20,
+          width: 640,
+          height: 480,
+          space: "screen-physical",
+        },
+      }),
+    ).toEqual({
+      resized: true,
+      bounds: {
+        x: 10,
+        y: 20,
+        width: 640,
+        height: 480,
+        space: "screen-physical",
+      },
+    });
+    expect(() =>
+      __windowsCaptureTestInternals.parseWindowResizePayload({
+        resized: false,
+        status: "windowNotFound",
+      }),
+    ).toThrowError("WINDOWS_APP_WINDOW_RESIZE_WINDOW_NOT_FOUND");
+
+    expect(
+      __windowsCaptureTestInternals.parseWindowMinimizePayload({
+        minimized: true,
+        status: "minimized",
+      }),
+    ).toBe(true);
+    expect(() =>
+      __windowsCaptureTestInternals.parseWindowMinimizePayload({
+        minimized: false,
+        status: "minimizeFailed",
+      }),
+    ).toThrowError("WINDOWS_APP_WINDOW_MINIMIZE_FAILED");
+
+    expect(
+      __windowsCaptureTestInternals.parseWindowMaximizePayload({
+        maximized: true,
+        status: "maximized",
+      }),
+    ).toBe(true);
+    expect(() =>
+      __windowsCaptureTestInternals.parseWindowMaximizePayload({
+        maximized: false,
+        status: "invalidWindowId",
+      }),
+    ).toThrowError("WINDOWS_APP_WINDOW_MAXIMIZE_INVALID_WINDOW_ID");
+
+    expect(
+      __windowsCaptureTestInternals.parseWindowClosePayload({
+        closed: false,
+        status: "closePending",
+      }),
+    ).toBe(false);
+    expect(() =>
+      __windowsCaptureTestInternals.parseWindowClosePayload({
+        closed: false,
+        status: "closeFailed",
+        errorCode: "3",
+      }),
+    ).toThrowError("WINDOWS_APP_WINDOW_CLOSE_FAILED:3");
+
+    expect(
+      __windowsCaptureTestInternals.parseWindowsElementFindPayload(
+        {
+          found: true,
+          elementId: "uia-1.2.3",
+          runtimeId: "1.2.3",
+          rect: {
+            x: 0,
+            y: 0,
+            width: 120,
+            height: 34,
+          },
+        },
+        "button.save",
+        undefined,
+      ),
+    ).toEqual(
+      expect.objectContaining({
+        elementId: "uia-1.2.3",
+        runtimeId: "1.2.3",
+      }),
+    );
+    expect(
+      __windowsCaptureTestInternals.parseWindowsElementFindPayload(
+        {
+          found: false,
+        },
+        "button.save",
+        "hwnd-1",
+      ),
+    ).toBeNull();
+    expect(() =>
+      __windowsCaptureTestInternals.parseWindowsElementFindPayload(
+        {
+          found: true,
+          elementId: "",
+          runtimeId: "",
+        },
+        "button.save",
+        undefined,
+      ),
+    ).toThrowError("WINDOWS_ELEMENT_FIND_INVALID_JSON");
+
+    expect(
+      __windowsCaptureTestInternals.parseWindowsElementInvokePayload({
+        invoked: true,
+      }),
+    ).toBe(true);
+    expect(() =>
+      __windowsCaptureTestInternals.parseWindowsElementInvokePayload({
+        invoked: "yes",
+      }),
+    ).toThrowError("WINDOWS_ELEMENT_INVOKE_INVALID_JSON");
+
+    expect(
+      __windowsCaptureTestInternals.parseWindowsElementSetValuePayload({
+        valueSet: false,
+      }),
+    ).toBe(false);
+    expect(() =>
+      __windowsCaptureTestInternals.parseWindowsElementSetValuePayload({
+        valueSet: "no",
+      }),
+    ).toThrowError("WINDOWS_ELEMENT_SET_VALUE_INVALID_JSON");
 
     expect(
       __windowsCaptureTestInternals.parseWindowsScreenDipToPhysicalPointPayload({
@@ -535,6 +1204,55 @@ describe("WindowsAdapter automation commands", () => {
           },
         },
         {
+          requestId: "cmd-non-win-drag",
+          expectedMessage: "WINDOWS_INPUT_DRAG_UNSUPPORTED_ON_NON_WINDOWS",
+          command: {
+            type: "input.drag",
+            start: {
+              x: 5,
+              y: 6,
+              space: "screen-dip",
+            },
+            end: {
+              x: 7,
+              y: 8,
+              space: "screen-dip",
+            },
+          },
+        },
+        {
+          requestId: "cmd-non-win-swipe",
+          expectedMessage: "WINDOWS_INPUT_SWIPE_UNSUPPORTED_ON_NON_WINDOWS",
+          command: {
+            type: "input.swipe",
+            start: {
+              x: 1,
+              y: 2,
+              space: "screen-dip",
+            },
+            end: {
+              x: 3,
+              y: 4,
+              space: "screen-dip",
+            },
+          },
+        },
+        {
+          requestId: "cmd-non-win-clipboard-read",
+          expectedMessage: "WINDOWS_CLIPBOARD_READ_UNSUPPORTED_ON_NON_WINDOWS",
+          command: {
+            type: "clipboard.read",
+          },
+        },
+        {
+          requestId: "cmd-non-win-clipboard-write",
+          expectedMessage: "WINDOWS_CLIPBOARD_WRITE_UNSUPPORTED_ON_NON_WINDOWS",
+          command: {
+            type: "clipboard.write",
+            text: "hello",
+          },
+        },
+        {
           requestId: "cmd-non-win-list",
           expectedMessage: "WINDOWS_APP_LIST_WINDOWS_UNSUPPORTED_ON_NON_WINDOWS",
           command: {
@@ -546,6 +1264,54 @@ describe("WindowsAdapter automation commands", () => {
           expectedMessage: "WINDOWS_APP_FOCUS_WINDOW_UNSUPPORTED_ON_NON_WINDOWS",
           command: {
             type: "app.focusWindow",
+            windowId: "hwnd-1",
+          },
+        },
+        {
+          requestId: "cmd-non-win-window-move",
+          expectedMessage: "WINDOWS_APP_WINDOW_MOVE_UNSUPPORTED_ON_NON_WINDOWS",
+          command: {
+            type: "app.windowMove",
+            windowId: "hwnd-1",
+            point: {
+              x: 1,
+              y: 2,
+              space: "screen-dip",
+            },
+          },
+        },
+        {
+          requestId: "cmd-non-win-window-resize",
+          expectedMessage: "WINDOWS_APP_WINDOW_RESIZE_UNSUPPORTED_ON_NON_WINDOWS",
+          command: {
+            type: "app.windowResize",
+            windowId: "hwnd-1",
+            width: 640,
+            height: 480,
+            space: "screen-dip",
+          },
+        },
+        {
+          requestId: "cmd-non-win-window-minimize",
+          expectedMessage: "WINDOWS_APP_WINDOW_MINIMIZE_UNSUPPORTED_ON_NON_WINDOWS",
+          command: {
+            type: "app.windowMinimize",
+            windowId: "hwnd-1",
+          },
+        },
+        {
+          requestId: "cmd-non-win-window-maximize",
+          expectedMessage: "WINDOWS_APP_WINDOW_MAXIMIZE_UNSUPPORTED_ON_NON_WINDOWS",
+          command: {
+            type: "app.windowMaximize",
+            windowId: "hwnd-1",
+          },
+        },
+        {
+          requestId: "cmd-non-win-window-close",
+          expectedMessage: "WINDOWS_APP_WINDOW_CLOSE_UNSUPPORTED_ON_NON_WINDOWS",
+          command: {
+            type: "app.windowClose",
             windowId: "hwnd-1",
           },
         },
