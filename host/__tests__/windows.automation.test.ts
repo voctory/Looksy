@@ -319,7 +319,7 @@ describe("WindowsAdapter automation commands", () => {
     expect(scroll).not.toHaveBeenCalled();
   });
 
-  it("builds PowerShell scripts for pointer, windowing, and SendKeys execution", () => {
+  it("builds PowerShell scripts for pointer, windowing, and SendInput execution", () => {
     const moveScript = __windowsCaptureTestInternals.buildWindowsMoveMousePowerShellScript({
       x: 100,
       y: 240,
@@ -340,23 +340,53 @@ describe("WindowsAdapter automation commands", () => {
     expect(focusWindowScript).toContain("SetForegroundWindow");
     expect(focusWindowScript).toContain("^hwnd-([0-9A-Fa-f]+)$");
 
-    const sequence = __windowsCaptureTestInternals.buildWindowsPressKeySequence({
+    const clickScript = __windowsCaptureTestInternals.buildWindowsClickPowerShellScript({
+      button: "left",
+      point: {
+        x: 300,
+        y: 400,
+        space: "screen-physical",
+      },
+    });
+    expect(clickScript).toContain("[LooksyInputNative]::SendInput");
+    expect(clickScript).toContain("New-LooksyMouseInput");
+    expect(clickScript).not.toContain("mouse_event");
+
+    const typeTextScript = __windowsCaptureTestInternals.buildWindowsTypeTextPowerShellScript("O'Brien{ENTER}");
+    expect(typeTextScript).toContain("FromBase64String");
+    expect(typeTextScript).toContain("New-LooksyKeyInput -wVk 0 -wScan $scanCode -flags 0x0004");
+    expect(typeTextScript).not.toContain("SendKeys");
+
+    const pressScript = __windowsCaptureTestInternals.buildWindowsPressKeyPowerShellScript({
       key: "Enter",
       modifiers: ["Control", "Shift"],
       repeat: 2,
     });
-    expect(sequence).toBe("^+{ENTER}^+{ENTER}");
+    expect(pressScript).toContain("[LooksyInputNative]::SendInput");
+    expect(pressScript).toContain("$modifierVirtualKeys = @(17, 16)");
+    expect(pressScript).toContain("$keyVirtualKey = [uint16]13");
+    expect(pressScript).not.toContain("SendKeys");
 
-    const spaceSequence = __windowsCaptureTestInternals.buildWindowsPressKeySequence({
+    const spacePlan = __windowsCaptureTestInternals.buildWindowsPressKeySendInputPlan({
       key: "Space",
       repeat: 3,
     });
-    expect(spaceSequence).toBe("   ");
+    expect(spacePlan).toEqual({
+      mode: "virtual-key",
+      repeat: 3,
+      modifierVirtualKeys: [],
+      keyVirtualKey: 0x20,
+    });
 
-    const sendKeysScript = __windowsCaptureTestInternals.buildWindowsSendKeysPowerShellScript("O'Brien{ENTER}");
-    expect(sendKeysScript).toContain("Add-Type -AssemblyName System.Windows.Forms");
-    expect(sendKeysScript).toContain("[System.Windows.Forms.SendKeys]::SendWait($sequence)");
-    expect(sendKeysScript).toContain("$sequence = 'O''Brien{ENTER}'");
+    const scrollScript = __windowsCaptureTestInternals.buildWindowsScrollPowerShellScript({
+      dx: 120,
+      dy: -240,
+      modifiers: ["Shift"],
+    });
+    expect(scrollScript).toContain("[LooksyInputNative]::SendInput");
+    expect(scrollScript).toContain("New-LooksyMouseInput -flags 0x1000");
+    expect(scrollScript).toContain("New-LooksyMouseInput -flags 0x0800");
+    expect(scrollScript).not.toContain("keybd_event");
   });
 
   it.runIf(process.platform !== "win32")(

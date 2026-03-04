@@ -549,21 +549,91 @@ async function normalizeGlobalInputPoint(
   };
 }
 
-function buildWindowsPointerTypeDefinitionLines(): string[] {
+function buildWindowsInputTypeDefinitionLines(): string[] {
   return [
-    "if (-not (\"LooksyPointerNative\" -as [type])) {",
+    "if (-not (\"LooksyInputNative\" -as [type])) {",
     "  Add-Type -TypeDefinition @\"",
     "using System;",
     "using System.Runtime.InteropServices;",
-    "public static class LooksyPointerNative {",
+    "public static class LooksyInputNative {",
+    "  [StructLayout(LayoutKind.Sequential)]",
+    "  public struct INPUT {",
+    "    public uint type;",
+    "    public InputUnion U;",
+    "  }",
+    "  [StructLayout(LayoutKind.Explicit)]",
+    "  public struct InputUnion {",
+    "    [FieldOffset(0)] public MOUSEINPUT mi;",
+    "    [FieldOffset(0)] public KEYBDINPUT ki;",
+    "    [FieldOffset(0)] public HARDWAREINPUT hi;",
+    "  }",
+    "  [StructLayout(LayoutKind.Sequential)]",
+    "  public struct MOUSEINPUT {",
+    "    public int dx;",
+    "    public int dy;",
+    "    public uint mouseData;",
+    "    public uint dwFlags;",
+    "    public uint time;",
+    "    public UIntPtr dwExtraInfo;",
+    "  }",
+    "  [StructLayout(LayoutKind.Sequential)]",
+    "  public struct KEYBDINPUT {",
+    "    public ushort wVk;",
+    "    public ushort wScan;",
+    "    public uint dwFlags;",
+    "    public uint time;",
+    "    public UIntPtr dwExtraInfo;",
+    "  }",
+    "  [StructLayout(LayoutKind.Sequential)]",
+    "  public struct HARDWAREINPUT {",
+    "    public uint uMsg;",
+    "    public ushort wParamL;",
+    "    public ushort wParamH;",
+    "  }",
+    "  [DllImport(\"user32.dll\", SetLastError = true)]",
+    "  public static extern uint SendInput(uint nInputs, INPUT[] pInputs, int cbSize);",
     "  [DllImport(\"user32.dll\", SetLastError = true)]",
     "  public static extern bool SetCursorPos(int X, int Y);",
-    "  [DllImport(\"user32.dll\", SetLastError = true)]",
-    "  public static extern void mouse_event(uint dwFlags, uint dx, uint dy, int dwData, UIntPtr dwExtraInfo);",
-    "  [DllImport(\"user32.dll\", SetLastError = true)]",
-    "  public static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, UIntPtr dwExtraInfo);",
     "}",
     "\"@",
+    "}",
+  ];
+}
+
+function buildWindowsSendInputHelperLines(errorPrefix: string): string[] {
+  const escapedErrorPrefix = escapePowerShellSingleQuotedString(errorPrefix);
+  return [
+    "$looksyInputSize = [Runtime.InteropServices.Marshal]::SizeOf([type]'LooksyInputNative+INPUT')",
+    "function New-LooksyMouseInput {",
+    "  param([uint32]$flags, [uint32]$mouseData)",
+    "  $input = New-Object LooksyInputNative+INPUT",
+    "  $input.type = 0",
+    "  $input.U.mi.dx = 0",
+    "  $input.U.mi.dy = 0",
+    "  $input.U.mi.mouseData = $mouseData",
+    "  $input.U.mi.dwFlags = $flags",
+    "  $input.U.mi.time = 0",
+    "  $input.U.mi.dwExtraInfo = [UIntPtr]::Zero",
+    "  return $input",
+    "}",
+    "function New-LooksyKeyInput {",
+    "  param([uint16]$wVk, [uint16]$wScan, [uint32]$flags)",
+    "  $input = New-Object LooksyInputNative+INPUT",
+    "  $input.type = 1",
+    "  $input.U.ki.wVk = $wVk",
+    "  $input.U.ki.wScan = $wScan",
+    "  $input.U.ki.dwFlags = $flags",
+    "  $input.U.ki.time = 0",
+    "  $input.U.ki.dwExtraInfo = [UIntPtr]::Zero",
+    "  return $input",
+    "}",
+    "function Send-LooksyInput {",
+    "  param([LooksyInputNative+INPUT[]]$inputs)",
+    "  if (-not $inputs -or $inputs.Length -eq 0) { return }",
+    "  $sent = [LooksyInputNative]::SendInput([uint32]$inputs.Length, $inputs, $looksyInputSize)",
+    "  if ($sent -ne $inputs.Length) {",
+    `    throw '${escapedErrorPrefix}_SEND_INPUT_FAILED'`,
+    "  }",
     "}",
   ];
 }
@@ -572,10 +642,10 @@ function buildWindowsMoveMousePowerShellScript(point: InputMoveMouseCommand["poi
   const normalized = normalizeScreenPoint(point, "WINDOWS_INPUT_MOVE_MOUSE_INVALID_POINT");
   return [
     "$ErrorActionPreference = 'Stop'",
-    ...buildWindowsPointerTypeDefinitionLines(),
+    ...buildWindowsInputTypeDefinitionLines(),
     `$x = ${normalized.x}`,
     `$y = ${normalized.y}`,
-    "if (-not [LooksyPointerNative]::SetCursorPos($x, $y)) { throw 'SetCursorPos failed' }",
+    "if (-not [LooksyInputNative]::SetCursorPos($x, $y)) { throw 'SetCursorPos failed' }",
   ].join("\n");
 }
 
@@ -598,16 +668,22 @@ function buildWindowsClickPowerShellScript(params: Omit<WindowsClickParams, "sig
         return [
           `$x = ${normalized.x}`,
           `$y = ${normalized.y}`,
-          "if (-not [LooksyPointerNative]::SetCursorPos($x, $y)) { throw 'SetCursorPos failed' }",
+          "if (-not [LooksyInputNative]::SetCursorPos($x, $y)) { throw 'SetCursorPos failed' }",
         ];
       })()
     : [];
   return [
     "$ErrorActionPreference = 'Stop'",
-    ...buildWindowsPointerTypeDefinitionLines(),
+    ...buildWindowsInputTypeDefinitionLines(),
+    ...buildWindowsSendInputHelperLines("WINDOWS_INPUT_CLICK"),
     ...pointLines,
-    `[LooksyPointerNative]::mouse_event(${flags.down}, 0, 0, 0, [UIntPtr]::Zero)`,
-    `[LooksyPointerNative]::mouse_event(${flags.up}, 0, 0, 0, [UIntPtr]::Zero)`,
+    `$mouseDownFlag = [uint32]${flags.down}`,
+    `$mouseUpFlag = [uint32]${flags.up}`,
+    "$inputs = @(",
+    "  (New-LooksyMouseInput -flags $mouseDownFlag -mouseData 0),",
+    "  (New-LooksyMouseInput -flags $mouseUpFlag -mouseData 0)",
+    ")",
+    "Send-LooksyInput -inputs $inputs",
   ].join("\n");
 }
 
@@ -620,211 +696,345 @@ async function clickViaPowerShell(params: WindowsClickParams): Promise<void> {
   await runPowerShellScript(script, params.signal, "WINDOWS_INPUT_CLICK");
 }
 
-function escapeTextForSendKeys(text: string): string {
+function buildWindowsTypeTextPowerShellScript(text: string): string {
   const normalized = text.replaceAll("\r\n", "\n").replaceAll("\r", "\n");
-  let escaped = "";
-  for (const character of normalized) {
-    switch (character) {
-      case "+":
-        escaped += "{+}";
-        break;
-      case "^":
-        escaped += "{^}";
-        break;
-      case "%":
-        escaped += "{%}";
-        break;
-      case "~":
-        escaped += "{~}";
-        break;
-      case "(":
-        escaped += "{(}";
-        break;
-      case ")":
-        escaped += "{)}";
-        break;
-      case "[":
-        escaped += "{[}";
-        break;
-      case "]":
-        escaped += "{]}";
-        break;
-      case "{":
-        escaped += "{{}";
-        break;
-      case "}":
-        escaped += "{}}";
-        break;
-      case "\t":
-        escaped += "{TAB}";
-        break;
-      case "\n":
-        escaped += "{ENTER}";
-        break;
-      default:
-        escaped += character;
-        break;
-    }
-  }
-  return escaped;
-}
-
-function buildWindowsSendKeysPowerShellScript(sequence: string): string {
+  const textBase64 = Buffer.from(normalized, "utf16le").toString("base64");
   return [
     "$ErrorActionPreference = 'Stop'",
-    "Add-Type -AssemblyName System.Windows.Forms",
-    `$sequence = '${escapePowerShellSingleQuotedString(sequence)}'`,
-    "[System.Windows.Forms.SendKeys]::SendWait($sequence)",
+    ...buildWindowsInputTypeDefinitionLines(),
+    ...buildWindowsSendInputHelperLines("WINDOWS_INPUT_TYPE_TEXT"),
+    `$textBase64 = '${textBase64}'`,
+    "$text = [System.Text.Encoding]::Unicode.GetString([Convert]::FromBase64String($textBase64))",
+    "$inputs = New-Object System.Collections.Generic.List[LooksyInputNative+INPUT]",
+    "foreach ($character in $text.ToCharArray()) {",
+    "  $charCode = [int][char]$character",
+    "  if ($charCode -eq 9) {",
+    "    $inputs.Add((New-LooksyKeyInput -wVk 0x09 -wScan 0 -flags 0))",
+    "    $inputs.Add((New-LooksyKeyInput -wVk 0x09 -wScan 0 -flags 0x0002))",
+    "    continue",
+    "  }",
+    "  if ($charCode -eq 10) {",
+    "    $inputs.Add((New-LooksyKeyInput -wVk 0x0D -wScan 0 -flags 0))",
+    "    $inputs.Add((New-LooksyKeyInput -wVk 0x0D -wScan 0 -flags 0x0002))",
+    "    continue",
+    "  }",
+    "  $scanCode = [uint16]$charCode",
+    "  $inputs.Add((New-LooksyKeyInput -wVk 0 -wScan $scanCode -flags 0x0004))",
+    "  $inputs.Add((New-LooksyKeyInput -wVk 0 -wScan $scanCode -flags 0x0006))",
+    "}",
+    "Send-LooksyInput -inputs $inputs.ToArray()",
   ].join("\n");
 }
 
 async function typeTextViaPowerShell(params: WindowsTypeTextParams): Promise<void> {
   assertWindowsHost("WINDOWS_INPUT_TYPE_TEXT_UNSUPPORTED_ON_NON_WINDOWS");
-  const sequence = escapeTextForSendKeys(params.text);
-  const script = buildWindowsSendKeysPowerShellScript(sequence);
+  const script = buildWindowsTypeTextPowerShellScript(params.text);
   await runPowerShellScript(script, params.signal, "WINDOWS_INPUT_TYPE_TEXT");
 }
 
-const SEND_KEYS_MODIFIER_PREFIX_BY_KEY = new Map<string, string>([
-  ["ctrl", "^"],
-  ["control", "^"],
-  ["shift", "+"],
-  ["alt", "%"],
-]);
-
-const SEND_KEYS_KEY_TOKEN_BY_KEY = new Map<string, string>([
-  ["enter", "{ENTER}"],
-  ["return", "{ENTER}"],
-  ["tab", "{TAB}"],
-  ["escape", "{ESC}"],
-  ["esc", "{ESC}"],
-  ["backspace", "{BACKSPACE}"],
-  ["delete", "{DELETE}"],
-  ["del", "{DELETE}"],
-  ["insert", "{INSERT}"],
-  ["home", "{HOME}"],
-  ["end", "{END}"],
-  ["pageup", "{PGUP}"],
-  ["pagedown", "{PGDN}"],
-  ["up", "{UP}"],
-  ["arrowup", "{UP}"],
-  ["down", "{DOWN}"],
-  ["arrowdown", "{DOWN}"],
-  ["left", "{LEFT}"],
-  ["arrowleft", "{LEFT}"],
-  ["right", "{RIGHT}"],
-  ["arrowright", "{RIGHT}"],
-  ["space", " "],
-  ["spacebar", " "],
-]);
-
-function getSendKeysModifierPrefix(modifier: string): string {
-  const normalized = modifier.trim().toLowerCase();
-  const prefix = SEND_KEYS_MODIFIER_PREFIX_BY_KEY.get(normalized);
-  if (!prefix) {
-    throw new Error(`WINDOWS_INPUT_PRESS_KEY_UNSUPPORTED_MODIFIER:${modifier}`);
-  }
-  return prefix;
-}
-
-function getSendKeysKeyToken(key: string): string {
-  const normalized = key.trim().toLowerCase();
-  if (!normalized) {
-    throw new Error("WINDOWS_INPUT_PRESS_KEY_INVALID_KEY");
-  }
-
-  const mapped = SEND_KEYS_KEY_TOKEN_BY_KEY.get(normalized);
-  if (mapped) {
-    return mapped;
-  }
-
-  const functionKey = /^f([1-9]|1\d|2[0-4])$/i.exec(normalized);
-  if (functionKey) {
-    return `{${functionKey[0].toUpperCase()}}`;
-  }
-
-  if (key.length === 1) {
-    return escapeTextForSendKeys(key);
-  }
-
-  throw new Error(`WINDOWS_INPUT_PRESS_KEY_UNSUPPORTED_KEY:${key}`);
-}
-
-function buildWindowsPressKeySequence(params: Omit<WindowsPressKeyParams, "signal">): string {
-  const repeat = Math.round(params.repeat);
-  if (!Number.isFinite(repeat) || repeat <= 0) {
-    throw new Error("WINDOWS_INPUT_PRESS_KEY_INVALID_REPEAT");
-  }
-  const modifierPrefix = (params.modifiers ?? []).map(getSendKeysModifierPrefix).join("");
-  const keyToken = getSendKeysKeyToken(params.key);
-  let sequence = "";
-  for (let index = 0; index < repeat; index += 1) {
-    sequence += `${modifierPrefix}${keyToken}`;
-  }
-  return sequence;
-}
-
-async function pressKeyViaPowerShell(params: WindowsPressKeyParams): Promise<void> {
-  assertWindowsHost("WINDOWS_INPUT_PRESS_KEY_UNSUPPORTED_ON_NON_WINDOWS");
-  const sequence = buildWindowsPressKeySequence({
-    key: params.key,
-    modifiers: params.modifiers,
-    repeat: params.repeat,
-  });
-  const script = buildWindowsSendKeysPowerShellScript(sequence);
-  await runPowerShellScript(script, params.signal, "WINDOWS_INPUT_PRESS_KEY");
-}
-
-const SCROLL_MODIFIER_VK_BY_KEY = new Map<string, number>([
+const INPUT_MODIFIER_VK_BY_KEY = new Map<string, number>([
   ["shift", 0x10],
   ["ctrl", 0x11],
   ["control", 0x11],
   ["alt", 0x12],
 ]);
 
-function buildWindowsScrollPowerShellScript(params: Omit<WindowsScrollParams, "signal">): string {
+const PRESS_KEY_VK_BY_KEY = new Map<string, number>([
+  ["enter", 0x0d],
+  ["return", 0x0d],
+  ["tab", 0x09],
+  ["escape", 0x1b],
+  ["esc", 0x1b],
+  ["backspace", 0x08],
+  ["delete", 0x2e],
+  ["del", 0x2e],
+  ["insert", 0x2d],
+  ["home", 0x24],
+  ["end", 0x23],
+  ["pageup", 0x21],
+  ["pagedown", 0x22],
+  ["up", 0x26],
+  ["arrowup", 0x26],
+  ["down", 0x28],
+  ["arrowdown", 0x28],
+  ["left", 0x25],
+  ["arrowleft", 0x25],
+  ["right", 0x27],
+  ["arrowright", 0x27],
+  ["space", 0x20],
+  ["spacebar", 0x20],
+]);
+
+function getInputModifierVirtualKey(modifier: string, errorPrefix: string): number {
+  const normalized = modifier.trim().toLowerCase();
+  const virtualKey = INPUT_MODIFIER_VK_BY_KEY.get(normalized);
+  if (!virtualKey) {
+    throw new Error(`${errorPrefix}_UNSUPPORTED_MODIFIER:${modifier}`);
+  }
+  return virtualKey;
+}
+
+function dedupeVirtualKeys(virtualKeys: readonly number[]): number[] {
+  const deduped: number[] = [];
+  for (const virtualKey of virtualKeys) {
+    if (!deduped.includes(virtualKey)) {
+      deduped.push(virtualKey);
+    }
+  }
+  return deduped;
+}
+
+function resolvePressKeyVirtualKeyFromSingleCharacter(key: string): {
+  virtualKey: number;
+  requiredModifiers: readonly number[];
+} {
+  const codePoint = key.codePointAt(0);
+  if (codePoint === undefined || codePoint > 0x7f) {
+    throw new Error(`WINDOWS_INPUT_PRESS_KEY_UNSUPPORTED_KEY:${key}`);
+  }
+  if (key >= "a" && key <= "z") {
+    return {
+      virtualKey: key.toUpperCase().charCodeAt(0),
+      requiredModifiers: [],
+    };
+  }
+  if (key >= "A" && key <= "Z") {
+    return {
+      virtualKey: key.charCodeAt(0),
+      requiredModifiers: [],
+    };
+  }
+  if (key >= "0" && key <= "9") {
+    return {
+      virtualKey: key.charCodeAt(0),
+      requiredModifiers: [],
+    };
+  }
+
+  const shifted = [0x10];
+  const unshifted: readonly number[] = [];
+  const symbolMapping = new Map<string, { virtualKey: number; requiredModifiers: readonly number[] }>([
+    ["`", { virtualKey: 0xc0, requiredModifiers: unshifted }],
+    ["~", { virtualKey: 0xc0, requiredModifiers: shifted }],
+    ["-", { virtualKey: 0xbd, requiredModifiers: unshifted }],
+    ["_", { virtualKey: 0xbd, requiredModifiers: shifted }],
+    ["=", { virtualKey: 0xbb, requiredModifiers: unshifted }],
+    ["+", { virtualKey: 0xbb, requiredModifiers: shifted }],
+    ["[", { virtualKey: 0xdb, requiredModifiers: unshifted }],
+    ["{", { virtualKey: 0xdb, requiredModifiers: shifted }],
+    ["]", { virtualKey: 0xdd, requiredModifiers: unshifted }],
+    ["}", { virtualKey: 0xdd, requiredModifiers: shifted }],
+    ["\\", { virtualKey: 0xdc, requiredModifiers: unshifted }],
+    ["|", { virtualKey: 0xdc, requiredModifiers: shifted }],
+    [";", { virtualKey: 0xba, requiredModifiers: unshifted }],
+    [":", { virtualKey: 0xba, requiredModifiers: shifted }],
+    ["'", { virtualKey: 0xde, requiredModifiers: unshifted }],
+    ['"', { virtualKey: 0xde, requiredModifiers: shifted }],
+    [",", { virtualKey: 0xbc, requiredModifiers: unshifted }],
+    ["<", { virtualKey: 0xbc, requiredModifiers: shifted }],
+    [".", { virtualKey: 0xbe, requiredModifiers: unshifted }],
+    [">", { virtualKey: 0xbe, requiredModifiers: shifted }],
+    ["/", { virtualKey: 0xbf, requiredModifiers: unshifted }],
+    ["?", { virtualKey: 0xbf, requiredModifiers: shifted }],
+    ["!", { virtualKey: 0x31, requiredModifiers: shifted }],
+    ["@", { virtualKey: 0x32, requiredModifiers: shifted }],
+    ["#", { virtualKey: 0x33, requiredModifiers: shifted }],
+    ["$", { virtualKey: 0x34, requiredModifiers: shifted }],
+    ["%", { virtualKey: 0x35, requiredModifiers: shifted }],
+    ["^", { virtualKey: 0x36, requiredModifiers: shifted }],
+    ["&", { virtualKey: 0x37, requiredModifiers: shifted }],
+    ["*", { virtualKey: 0x38, requiredModifiers: shifted }],
+    ["(", { virtualKey: 0x39, requiredModifiers: shifted }],
+    [")", { virtualKey: 0x30, requiredModifiers: shifted }],
+  ]);
+  const mapped = symbolMapping.get(key);
+  if (mapped) {
+    return mapped;
+  }
+
+  throw new Error(`WINDOWS_INPUT_PRESS_KEY_UNSUPPORTED_KEY:${key}`);
+}
+
+type WindowsPressKeySendInputPlan =
+  | {
+      mode: "virtual-key";
+      repeat: number;
+      modifierVirtualKeys: readonly number[];
+      keyVirtualKey: number;
+    }
+  | {
+      mode: "unicode";
+      repeat: number;
+      modifierVirtualKeys: readonly number[];
+      unicodeCodeUnits: readonly number[];
+    };
+
+function buildWindowsPressKeySendInputPlan(params: Omit<WindowsPressKeyParams, "signal">): WindowsPressKeySendInputPlan {
+  const repeat = Math.round(params.repeat);
+  if (!Number.isFinite(repeat) || repeat <= 0) {
+    throw new Error("WINDOWS_INPUT_PRESS_KEY_INVALID_REPEAT");
+  }
+
+  const normalizedKey = params.key.trim().toLowerCase();
+  if (!normalizedKey) {
+    throw new Error("WINDOWS_INPUT_PRESS_KEY_INVALID_KEY");
+  }
+
+  const explicitModifierVirtualKeys = (params.modifiers ?? []).map((modifier) =>
+    getInputModifierVirtualKey(modifier, "WINDOWS_INPUT_PRESS_KEY"),
+  );
+  const mappedVirtualKey = PRESS_KEY_VK_BY_KEY.get(normalizedKey);
+  if (mappedVirtualKey) {
+    return {
+      mode: "virtual-key",
+      repeat,
+      modifierVirtualKeys: explicitModifierVirtualKeys,
+      keyVirtualKey: mappedVirtualKey,
+    };
+  }
+
+  const functionKey = /^f([1-9]|1\d|2[0-4])$/i.exec(normalizedKey);
+  if (functionKey) {
+    const functionKeyNumber = Number.parseInt(functionKey[1] ?? "", 10);
+    return {
+      mode: "virtual-key",
+      repeat,
+      modifierVirtualKeys: explicitModifierVirtualKeys,
+      keyVirtualKey: 0x70 + functionKeyNumber - 1,
+    };
+  }
+
+  if (params.key.length === 1 && explicitModifierVirtualKeys.length === 0) {
+    return {
+      mode: "unicode",
+      repeat,
+      modifierVirtualKeys: [],
+      unicodeCodeUnits: [params.key.charCodeAt(0)],
+    };
+  }
+
+  if (params.key.length === 1) {
+    const singleCharacterMapping = resolvePressKeyVirtualKeyFromSingleCharacter(params.key);
+    return {
+      mode: "virtual-key",
+      repeat,
+      modifierVirtualKeys: dedupeVirtualKeys([
+        ...explicitModifierVirtualKeys,
+        ...singleCharacterMapping.requiredModifiers,
+      ]),
+      keyVirtualKey: singleCharacterMapping.virtualKey,
+    };
+  }
+
+  throw new Error(`WINDOWS_INPUT_PRESS_KEY_UNSUPPORTED_KEY:${params.key}`);
+}
+
+function buildWindowsPressKeyPowerShellScript(params: Omit<WindowsPressKeyParams, "signal">): string {
+  const plan = buildWindowsPressKeySendInputPlan(params);
+  const modifierArray = plan.modifierVirtualKeys.length > 0 ? plan.modifierVirtualKeys.join(", ") : "";
+  const declarationLines =
+    plan.mode === "unicode"
+      ? [`$unicodeCodeUnits = @(${plan.unicodeCodeUnits.join(", ")})`]
+      : [`$keyVirtualKey = [uint16]${plan.keyVirtualKey}`];
+  return [
+    "$ErrorActionPreference = 'Stop'",
+    ...buildWindowsInputTypeDefinitionLines(),
+    ...buildWindowsSendInputHelperLines("WINDOWS_INPUT_PRESS_KEY"),
+    `$repeat = ${plan.repeat}`,
+    `$modifierVirtualKeys = @(${modifierArray})`,
+    ...declarationLines,
+    "$inputs = New-Object System.Collections.Generic.List[LooksyInputNative+INPUT]",
+    "for ($i = 0; $i -lt $repeat; $i++) {",
+    "  foreach ($vk in $modifierVirtualKeys) {",
+    "    $inputs.Add((New-LooksyKeyInput -wVk ([uint16]$vk) -wScan 0 -flags 0))",
+    "  }",
+    ...(plan.mode === "unicode"
+      ? [
+          "  foreach ($unicodeCodeUnit in $unicodeCodeUnits) {",
+          "    $scanCode = [uint16]$unicodeCodeUnit",
+          "    $inputs.Add((New-LooksyKeyInput -wVk 0 -wScan $scanCode -flags 0x0004))",
+          "    $inputs.Add((New-LooksyKeyInput -wVk 0 -wScan $scanCode -flags 0x0006))",
+          "  }",
+        ]
+      : [
+          "  $inputs.Add((New-LooksyKeyInput -wVk $keyVirtualKey -wScan 0 -flags 0))",
+          "  $inputs.Add((New-LooksyKeyInput -wVk $keyVirtualKey -wScan 0 -flags 0x0002))",
+        ]),
+    "  for ($modifierIndex = $modifierVirtualKeys.Length - 1; $modifierIndex -ge 0; $modifierIndex--) {",
+    "    $inputs.Add((New-LooksyKeyInput -wVk ([uint16]$modifierVirtualKeys[$modifierIndex]) -wScan 0 -flags 0x0002))",
+    "  }",
+    "}",
+    "Send-LooksyInput -inputs $inputs.ToArray()",
+  ].join("\n");
+}
+
+async function pressKeyViaPowerShell(params: WindowsPressKeyParams): Promise<void> {
+  assertWindowsHost("WINDOWS_INPUT_PRESS_KEY_UNSUPPORTED_ON_NON_WINDOWS");
+  const script = buildWindowsPressKeyPowerShellScript({
+    key: params.key,
+    modifiers: params.modifiers,
+    repeat: params.repeat,
+  });
+  await runPowerShellScript(script, params.signal, "WINDOWS_INPUT_PRESS_KEY");
+}
+
+type WindowsScrollSendInputPlan = {
+  dx: number;
+  dy: number;
+  modifierVirtualKeys: readonly number[];
+};
+
+function buildWindowsScrollSendInputPlan(params: Omit<WindowsScrollParams, "signal">): WindowsScrollSendInputPlan {
   const dx = Math.round(params.dx);
   const dy = Math.round(params.dy);
   if (!Number.isFinite(dx) || !Number.isFinite(dy)) {
     throw new Error("WINDOWS_INPUT_SCROLL_INVALID_DELTA");
   }
+  const modifierVirtualKeys = (params.modifiers ?? []).map((modifier) =>
+    getInputModifierVirtualKey(modifier, "WINDOWS_INPUT_SCROLL"),
+  );
+  return {
+    dx,
+    dy,
+    modifierVirtualKeys,
+  };
+}
+
+function buildWindowsScrollPowerShellScript(params: Omit<WindowsScrollParams, "signal">): string {
+  const plan = buildWindowsScrollSendInputPlan(params);
   const pointLines = params.point
     ? (() => {
         const normalized = normalizeScreenPoint(params.point, "WINDOWS_INPUT_SCROLL_INVALID_POINT");
         return [
           `$x = ${normalized.x}`,
           `$y = ${normalized.y}`,
-          "if (-not [LooksyPointerNative]::SetCursorPos($x, $y)) { throw 'SetCursorPos failed' }",
+          "if (-not [LooksyInputNative]::SetCursorPos($x, $y)) { throw 'SetCursorPos failed' }",
         ];
       })()
     : [];
-  const modifierVirtualKeys = (params.modifiers ?? []).map((modifier) => {
-    const normalized = modifier.trim().toLowerCase();
-    const vk = SCROLL_MODIFIER_VK_BY_KEY.get(normalized);
-    if (!vk) {
-      throw new Error(`WINDOWS_INPUT_SCROLL_UNSUPPORTED_MODIFIER:${modifier}`);
-    }
-    return vk;
-  });
-  const modifierArray = modifierVirtualKeys.length > 0 ? modifierVirtualKeys.join(", ") : "";
+  const modifierArray = plan.modifierVirtualKeys.length > 0 ? plan.modifierVirtualKeys.join(", ") : "";
   return [
     "$ErrorActionPreference = 'Stop'",
-    ...buildWindowsPointerTypeDefinitionLines(),
+    ...buildWindowsInputTypeDefinitionLines(),
+    ...buildWindowsSendInputHelperLines("WINDOWS_INPUT_SCROLL"),
     ...pointLines,
-    `$dx = ${dx}`,
-    `$dy = ${dy}`,
+    `$dx = ${plan.dx}`,
+    `$dy = ${plan.dy}`,
     `$modifierVirtualKeys = @(${modifierArray})`,
+    "$inputs = New-Object System.Collections.Generic.List[LooksyInputNative+INPUT]",
     "foreach ($vk in $modifierVirtualKeys) {",
-    "  [LooksyPointerNative]::keybd_event([byte]$vk, 0, 0, [UIntPtr]::Zero)",
+    "  $inputs.Add((New-LooksyKeyInput -wVk ([uint16]$vk) -wScan 0 -flags 0))",
     "}",
-    "try {",
-    "  if ($dx -ne 0) { [LooksyPointerNative]::mouse_event(0x1000, 0, 0, $dx, [UIntPtr]::Zero) }",
-    "  if ($dy -ne 0) { [LooksyPointerNative]::mouse_event(0x0800, 0, 0, $dy, [UIntPtr]::Zero) }",
-    "} finally {",
-    "  for ($i = $modifierVirtualKeys.Length - 1; $i -ge 0; $i--) {",
-    "    [LooksyPointerNative]::keybd_event([byte]$modifierVirtualKeys[$i], 0, 0x0002, [UIntPtr]::Zero)",
-    "  }",
+    "if ($dx -ne 0) {",
+    "  $inputs.Add((New-LooksyMouseInput -flags 0x1000 -mouseData ([uint32]([int]$dx))))",
     "}",
+    "if ($dy -ne 0) {",
+    "  $inputs.Add((New-LooksyMouseInput -flags 0x0800 -mouseData ([uint32]([int]$dy))))",
+    "}",
+    "for ($i = $modifierVirtualKeys.Length - 1; $i -ge 0; $i--) {",
+    "  $inputs.Add((New-LooksyKeyInput -wVk ([uint16]$modifierVirtualKeys[$i]) -wScan 0 -flags 0x0002))",
+    "}",
+    "Send-LooksyInput -inputs $inputs.ToArray()",
   ].join("\n");
 }
 
@@ -1062,13 +1272,98 @@ async function captureWindowsScreenViaPowerShell(params: WindowsCaptureScreenPar
   return bytes;
 }
 
+let cachedWindowsScreenDipScale: number | null = null;
+
+function buildWindowsScreenDipScalePowerShellScript(): string {
+  return [
+    "$ErrorActionPreference = 'Stop'",
+    "if (-not (\"LooksyDpiScaleNative\" -as [type])) {",
+    "  Add-Type -TypeDefinition @\"",
+    "using System;",
+    "using System.Runtime.InteropServices;",
+    "public static class LooksyDpiScaleNative {",
+    "  [DllImport(\"user32.dll\", SetLastError = true)]",
+    "  public static extern uint GetDpiForSystem();",
+    "  [DllImport(\"user32.dll\", SetLastError = true)]",
+    "  public static extern IntPtr GetDC(IntPtr hWnd);",
+    "  [DllImport(\"user32.dll\", SetLastError = true)]",
+    "  public static extern int ReleaseDC(IntPtr hWnd, IntPtr hDC);",
+    "  [DllImport(\"gdi32.dll\", SetLastError = true)]",
+    "  public static extern int GetDeviceCaps(IntPtr hdc, int index);",
+    "}",
+    "\"@",
+    "}",
+    "$dpi = 96.0",
+    "$resolvedWithGetDpiForSystem = $false",
+    "try {",
+    "  $dpiForSystem = [double][LooksyDpiScaleNative]::GetDpiForSystem()",
+    "  if ($dpiForSystem -gt 0) {",
+    "    $dpi = $dpiForSystem",
+    "    $resolvedWithGetDpiForSystem = $true",
+    "  }",
+    "} catch {",
+    "}",
+    "if (-not $resolvedWithGetDpiForSystem) {",
+    "  $desktopDc = [LooksyDpiScaleNative]::GetDC([IntPtr]::Zero)",
+    "  try {",
+    "    if ($desktopDc -ne [IntPtr]::Zero) {",
+    "      $logPixelsX = [LooksyDpiScaleNative]::GetDeviceCaps($desktopDc, 88)",
+    "      if ($logPixelsX -gt 0) {",
+    "        $dpi = [double]$logPixelsX",
+    "      }",
+    "    }",
+    "  } finally {",
+    "    if ($desktopDc -ne [IntPtr]::Zero) { [void][LooksyDpiScaleNative]::ReleaseDC([IntPtr]::Zero, $desktopDc) }",
+    "  }",
+    "}",
+    "if ($dpi -le 0) { $dpi = 96.0 }",
+    "$scale = $dpi / 96.0",
+    "if ([double]::IsNaN($scale) -or [double]::IsInfinity($scale) -or $scale -le 0) { $scale = 1.0 }",
+    "[PSCustomObject]@{ scale = [double]$scale } | ConvertTo-Json -Compress",
+  ].join("\n");
+}
+
+function parseWindowsScreenDipScalePayload(payload: unknown): number {
+  if (isRecord(payload) && typeof payload.scale === "number" && Number.isFinite(payload.scale) && payload.scale > 0) {
+    return payload.scale;
+  }
+  throw new Error("WINDOWS_SCREEN_DIP_SCALE_INVALID_JSON");
+}
+
+async function getWindowsScreenDipScale(signal: AbortSignal): Promise<number> {
+  if (cachedWindowsScreenDipScale !== null) {
+    return cachedWindowsScreenDipScale;
+  }
+  const payload = await runPowerShellJson(
+    buildWindowsScreenDipScalePowerShellScript(),
+    signal,
+    "WINDOWS_SCREEN_DIP_SCALE",
+  );
+  const scale = parseWindowsScreenDipScalePayload(payload);
+  cachedWindowsScreenDipScale = scale;
+  return scale;
+}
+
 async function convertScreenDipToPhysicalPoint(
   params: WindowsScreenDipToPhysicalPointParams,
 ): Promise<{ x: number; y: number }> {
   throwIfAborted(params.signal);
+  if (process.platform !== "win32") {
+    return {
+      x: params.point.x,
+      y: params.point.y,
+    };
+  }
+  const scale = await getWindowsScreenDipScale(params.signal);
+  throwIfAborted(params.signal);
+  const x = Math.round(params.point.x * scale);
+  const y = Math.round(params.point.y * scale);
+  if (!Number.isFinite(x) || !Number.isFinite(y)) {
+    throw new Error("WINDOWS_SCREEN_DIP_SCALE_INVALID_RESULT");
+  }
   return {
-    x: params.point.x,
-    y: params.point.y,
+    x,
+    y,
   };
 }
 
@@ -1248,8 +1543,9 @@ export const __windowsCaptureTestInternals = {
   buildWindowsCapturePowerShellScript,
   buildWindowsMoveMousePowerShellScript,
   buildWindowsClickPowerShellScript,
-  buildWindowsSendKeysPowerShellScript,
-  buildWindowsPressKeySequence,
+  buildWindowsTypeTextPowerShellScript,
+  buildWindowsPressKeyPowerShellScript,
+  buildWindowsPressKeySendInputPlan,
   buildWindowsScrollPowerShellScript,
   buildWindowsListWindowsPowerShellScript,
   buildWindowsFocusWindowPowerShellScript,
