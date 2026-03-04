@@ -795,7 +795,7 @@ function buildWindowsListWindowsPowerShellScript(params: Omit<WindowsListWindows
     `$desktopOnly = ${desktopOnly}`,
     "$foregroundWindow = [LooksyWindowNative]::GetForegroundWindow()",
     "$shellWindow = [LooksyWindowNative]::GetShellWindow()",
-    "$windows = New-Object System.Collections.Generic.List[object]",
+    "$windows = New-Object System.Collections.ArrayList",
     "$enumProc = [LooksyWindowNative+EnumWindowsProc]{",
     "  param([IntPtr]$hWnd, [IntPtr]$lParam)",
     "  if ($hWnd -eq $shellWindow) { return $true }",
@@ -824,7 +824,7 @@ function buildWindowsListWindowsPowerShellScript(params: Omit<WindowsListWindows
     "  }",
     "  if ($desktopOnly -and ($appName -eq 'ApplicationFrameHost' -or $appName -eq 'ShellExperienceHost')) { return $true }",
     "  $windowId = ('hwnd-{0:X}' -f $hWnd.ToInt64())",
-    "  $windows.Add([PSCustomObject]@{",
+    "  [void]$windows.Add([PSCustomObject]@{",
     "    windowId = $windowId",
     "    title = $title",
     "    appName = $appName",
@@ -840,7 +840,7 @@ function buildWindowsListWindowsPowerShellScript(params: Omit<WindowsListWindows
     "  return $true",
     "}",
     "[void][LooksyWindowNative]::EnumWindows($enumProc, [IntPtr]::Zero)",
-    "@($windows) | ConvertTo-Json -Compress -Depth 6",
+    "$windows | ConvertTo-Json -Compress -Depth 6",
   ].join("\n");
 }
 
