@@ -326,11 +326,16 @@ export class WindowsAdapter implements HostAdapter {
       case "screen.capture": {
         const artifactId = `windows-${context.requestId}`;
         const format = command.format ?? "png";
+        const region = await normalizeScreenCaptureRegion(
+          command.region,
+          context.signal,
+          this.screenDipToPhysicalPoint,
+        );
         const mimeType = mimeTypeForFormat(format);
         const capturedAt = new Date().toISOString();
         const bytes = await this.captureScreen({
           format,
-          region: command.region,
+          region,
           signal: context.signal,
         });
         if (bytes.byteLength === 0) {
@@ -347,7 +352,7 @@ export class WindowsAdapter implements HostAdapter {
           artifactId,
           mimeType,
           capturedAt,
-          ...(command.region ? { region: command.region } : {}),
+          ...(region ? { region } : {}),
         };
       }
       case "input.moveMouse":
@@ -977,6 +982,78 @@ async function normalizeGlobalWindowSize(
     throw new Error(`${errorPrefix}_INVALID_SIZE`);
   }
   return normalized;
+}
+
+function normalizeCaptureRegionDimensions(
+  region: ScreenCaptureRegion,
+  errorCode: string,
+): { x: number; y: number; width: number; height: number } {
+  const x = Math.round(region.x);
+  const y = Math.round(region.y);
+  const width = Math.round(region.width);
+  const height = Math.round(region.height);
+  if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(width) || !Number.isFinite(height)) {
+    throw new Error(errorCode);
+  }
+  if (width <= 0 || height <= 0) {
+    throw new Error(errorCode);
+  }
+  return { x, y, width, height };
+}
+
+async function normalizeScreenCaptureRegion(
+  region: ScreenCaptureRegion | undefined,
+  signal: AbortSignal,
+  screenDipToPhysicalPoint: WindowsScreenDipToPhysicalPointFn,
+): Promise<ScreenCaptureRegion | undefined> {
+  if (!region) {
+    return undefined;
+  }
+  if (region.space === "window-client") {
+    throw new Error("WINDOWS_SCREEN_CAPTURE_WINDOW_CLIENT_UNSUPPORTED");
+  }
+  if (region.space === "screen-physical") {
+    return region;
+  }
+
+  const normalizedDipRegion = normalizeCaptureRegionDimensions(region, "WINDOWS_SCREEN_CAPTURE_INVALID_REGION");
+  const topLeft = await screenDipToPhysicalPoint({
+    point: {
+      x: normalizedDipRegion.x,
+      y: normalizedDipRegion.y,
+      space: "screen-dip",
+    },
+    signal,
+  });
+  const bottomRight = await screenDipToPhysicalPoint({
+    point: {
+      x: normalizedDipRegion.x + normalizedDipRegion.width,
+      y: normalizedDipRegion.y + normalizedDipRegion.height,
+      space: "screen-dip",
+    },
+    signal,
+  });
+
+  const x = Math.round(topLeft.x);
+  const y = Math.round(topLeft.y);
+  const right = Math.round(bottomRight.x);
+  const bottom = Math.round(bottomRight.y);
+  const width = right - x;
+  const height = bottom - y;
+  if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(width) || !Number.isFinite(height)) {
+    throw new Error("WINDOWS_SCREEN_CAPTURE_SCREEN_DIP_CONVERSION_FAILED");
+  }
+  if (width <= 0 || height <= 0) {
+    throw new Error("WINDOWS_SCREEN_CAPTURE_SCREEN_DIP_CONVERSION_FAILED");
+  }
+
+  return {
+    x,
+    y,
+    width,
+    height,
+    space: "screen-physical",
+  };
 }
 
 function buildWindowsInputTypeDefinitionLines(): string[] {
@@ -2851,17 +2928,7 @@ function normalizeCaptureRegion(region?: ScreenCaptureRegion): { x: number; y: n
   if (!region) {
     return null;
   }
-  const x = Math.round(region.x);
-  const y = Math.round(region.y);
-  const width = Math.round(region.width);
-  const height = Math.round(region.height);
-  if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(width) || !Number.isFinite(height)) {
-    throw new Error("WINDOWS_SCREEN_CAPTURE_INVALID_REGION");
-  }
-  if (width <= 0 || height <= 0) {
-    throw new Error("WINDOWS_SCREEN_CAPTURE_INVALID_REGION");
-  }
-  return { x, y, width, height };
+  return normalizeCaptureRegionDimensions(region, "WINDOWS_SCREEN_CAPTURE_INVALID_REGION");
 }
 
 function buildWindowsCapturePowerShellScript(params: WindowsCaptureScreenParams): string {
