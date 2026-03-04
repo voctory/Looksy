@@ -29,11 +29,12 @@ async function createSession(core: HostCore, requestId = "hs-windows-capture") {
 }
 
 describe("WindowsAdapter screen.capture", () => {
-  it("uses virtual desktop bounds for default capture script", () => {
+  it("uses DPI-aware virtual desktop bounds for default capture script", () => {
     const script = __windowsCaptureTestInternals.buildWindowsCapturePowerShellScript({
       format: "png",
       signal: new AbortController().signal,
     });
+    expect(script).toContain("[LooksyNativeMethods]::SetProcessDPIAware()");
     expect(script).toContain("[System.Windows.Forms.SystemInformation]::VirtualScreen");
     expect(script).not.toContain("PrimaryScreen.Bounds");
   });
