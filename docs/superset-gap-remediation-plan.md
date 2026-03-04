@@ -1,64 +1,98 @@
-# Superset Gap Remediation Plan (March 3, 2026)
+# Superset Gap Remediation Plan (Updated March 3, 2026)
 
-This document tracks what is still missing for Looksy to be a practical superset of current desktop/browser automation behavior used by consumer integrations.
+This plan tracks what remains before Looksy can be treated as a practical superset for consumer browser/computer automation paths.
 
-## Current Assessment
+## Current Assessment (March 3, 2026)
 
-Status: **not yet a superset**.
+Status: **not yet a superset**, but this wave moved key integration paths from design-only to partially routed production code.
 
-Primary blocking gaps:
+## Implemented in This Wave (Evidence-Based)
 
-1. Browser/domain action parity is still incomplete versus current consumer behavior.
-2. Runtime adapters are still simulated, not real OS automation backends.
-3. Consumer routing still relies on fallback for unsupported semantics.
+### 1. OpenClaw browser entrypoint now supports feature-flagged Looksy routing
 
-## Baseline Surface We Must Cover
+Delivered behavior:
+- `LOOKSY_INTEGRATION_ENABLED`, `LOOKSY_FORCE_LEGACY_EXECUTION`, `LOOKSY_FALLBACK_TO_LEGACY_ON_ERROR` govern routing.
+- Successful responses include route metadata: `looksy`, `legacy`, `legacy-fallback`.
+- Unsupported/translation-limited operations are surfaced as typed errors or fallback to legacy (based on flag).
 
-The baseline surface is the union of currently used behavior in consumer integrations:
+Evidence:
+- `../openclaw/src/gateway/server-methods/browser.ts`
+  - `resolveLooksyRoutingFlags`
+  - `translateBrowserRequestToLooksy`
+  - `invokeLooksyCommand`
+  - `browserHandlers["browser.request"]`
+- `../openclaw/src/gateway/server-methods/browser.looksy-routing.test.ts`
+  - integration-disabled -> legacy
+  - force-legacy -> legacy
+  - looksy failure + fallback enabled -> legacy-fallback
+  - looksy failure + fallback disabled -> surfaced error
 
-- Desktop primitives: health, capture, input, app/window, element, cancel, metrics.
-- Browser primitives: navigation, tab lifecycle, snapshots, richer action verbs, debug/trace/state surfaces, download/file-dialog hooks.
+### 2. Trope Looksy browser mapping expanded beyond screenshot/click/type
 
-## Priority Backlog
+Delivered behavior:
+- Looksy mapping now includes:
+  - screenshot -> `screen.capture`
+  - click -> `input.click`
+  - hover -> `input.moveMouse`
+  - type_text -> `input.typeText`
+  - press_key (lossless single-character path) -> `input.typeText`
+- Unsupported or lossy actions still return `None` mapping and depend on fallback policy.
 
-### P0 (Must finish first)
+Evidence:
+- `../trope/packages/rust/trope-daemon/src/tools/mod.rs`
+  - `map_browser_action_to_looksy_v1_command`
+  - `parse_lossless_press_key_text`
+  - `execute_browser_command_with_routing`
+- tests in same file (`map_browser_action_to_looksy_maps_supported_actions`, `map_browser_action_to_looksy_rejects_unsupported_actions`)
 
-- [x] Add screenshot artifact retrieval endpoint and host-side artifact storage.
-  - Acceptance:
-    - `screen.capture` result includes retrieval metadata.
-    - artifact bytes can be fetched by artifact ID from loopback endpoint.
-    - tests cover success + not-found + auth/session denial path.
+### 3. Protocol/runtime primitives were expanded and validated
 
-- [x] Align C# SDK request/response models with protocol v1 envelopes.
-  - Acceptance:
-    - handshake and command use the same envelope shape as host validation.
-    - health/capabilities/screenshot command names match protocol v1 IDs.
+Delivered primitives now present in protocol + host simulation:
+- Input: `input.pressKey`, `input.scroll`
+- Browser: `browser.navigate`, `browser.snapshot`, `browser.pdf`, `browser.console`, `browser.trace.start`, `browser.trace.stop`
+- Element: `element.find`, `element.invoke`, `element.setValue`
+- Host-managed: `control.cancel`, `observability.getMetrics`
+- Screenshot retrieval metadata + artifact endpoint (`artifactUrl`, `/v1/artifacts/{id}?sessionId=...`)
 
-- [x] Align Rust SDK request/response models with protocol v1 envelopes.
-  - Acceptance:
-    - handshake and command use the same envelope shape as host validation.
-    - health/capabilities/screenshot command names match protocol v1 IDs.
+Evidence:
+- `protocol/schema.ts`
+- `protocol/schema.test.ts`
+- `host/__tests__/core.test.ts`
+- `host/httpServer.ts`
+- `protocol/generated/v1/identifiers.json`
+- generated constants:
+  - `client/csharp/Looksy.Client/Generated/ProtocolConstants.g.cs`
+  - `client/rust/src/generated.rs`
 
-- [x] Remove screenshot payload drift between protocol and clients.
-  - Acceptance:
-    - TS SDK + CLI screenshot payload fields are accepted by protocol schema.
-    - tests cover screenshot payload compatibility.
+## Remaining Blockers After This Wave
 
-### P1 (Needed for practical parity)
+### P0 blockers (must close for practical superset claim)
 
-- [ ] Expand protocol/browser command families to cover consumer-used browser actions.
-- [ ] Expand integration routing in consumer repos to reduce forced legacy fallback scope.
-- [ ] Add parity tests for routed actions and output-shape compatibility.
+1. Real backend gap: adapters are still simulated, not real OS/browser automation backends.
+- Evidence: `host/adapters/macos.ts`, `host/adapters/windows.ts` (simulated behavior and synthetic payload generation).
 
-### P2 (Operational completion)
+2. Consumer translation coverage remains partial.
+- OpenClaw Looksy route still rejects/falls back for parity routes such as `/navigate`, `/snapshot`, `/pdf`, `/console`, `/trace/start`, `/trace/stop`.
+- Evidence: `../openclaw/src/gateway/server-methods/browser.ts` translation branches + routing tests.
 
-- [ ] Replace simulated adapters with real macOS and Windows automation backends.
-- [ ] Complete phase 9-14 operations checklist (staging rollback drills, canary, dogfood, dashboards, default-on, legacy removal).
+3. Trope Windows runtime still cannot execute `automation.browser` commands end-to-end.
+- Daemon routes browser via `capability_id = automation.browser`, but Windows agent does not expose/execute that capability today.
+- Evidence: `../trope/packages/rust/trope-daemon/src/tools/mod.rs`, `../trope/apps/windows/WindowsAgent/Program.cs`, `../trope/docs/WINDOWS_AUTOMATION_LOOKSY_CAPABILITY_MATRIX_MAR_2026.md`.
 
-## Execution Notes
+### P1 blockers (needed to reduce integration friction)
 
-Update this section as work lands:
+4. SDK convenience wrappers lag protocol breadth.
+- C# and Rust wrappers currently expose only a subset (health/capabilities/screenshot/windows list) despite generated constants carrying broader command IDs.
+- Evidence:
+  - `client/csharp/Looksy.Client/LooksyClient.cs`
+  - `client/rust/src/client.rs`
 
-- 2026-03-03: audit completed across Looksy + both consumer repos; P0/P1/P2 backlog captured.
-- 2026-03-03: P0 completed in Looksy (artifact retrieval + SDK envelope alignment + screenshot payload compatibility), with integration hardening landed in consumer routing layers.
-- 2026-03-03: P1 hardening started: session TTL enforcement + non-adapter failure telemetry coverage in host-core, plus expanded routing/fallback matrix tests in consumer integrations.
+5. Parity tests are still concentrated on limited routed paths; broader cross-consumer contract tests are pending.
+
+## Updated Execution Order
+
+1. **P0**: replace simulated adapters with real platform/browser backends.
+2. **P0**: close OpenClaw + Trope translation/capability blockers for parity-critical browser routes.
+3. **P1**: expand C#/Rust wrapper coverage to new protocol primitives.
+4. **P1**: add cross-consumer parity/regression matrix for routed actions and error envelopes.
+5. **P2**: complete phases 9-14 rollout gates (staging drill, canary, default-on, legacy removal) once P0/P1 are stable.
