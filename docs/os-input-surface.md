@@ -83,6 +83,9 @@ pnpm vitest run src/gateway/server-methods/browser.looksy-routing.test.ts
 # Trope mapper + routing matrix
 cargo test -p trope-daemon map_browser_action_to_looksy_
 cargo test -p trope-daemon execute_browser_command_with_routing_
+
+# Local Windows real-capture smoke (non-Windows hosts skip deterministically)
+npm run smoke:windows-screenshot
 ```
 
 ## Rollout Baseline Matrix

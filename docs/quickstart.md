@@ -23,6 +23,16 @@ This runs:
 - fixture-driven conformance tests across both built-in adapters
 - regression coverage checks for auth, policy, timeout, and cancel paths
 
+### Windows real screenshot smoke check (local)
+
+```bash
+npm run smoke:windows-screenshot
+```
+
+Behavior:
+- On Windows: captures a real desktop PNG via OS APIs and fails if output looks synthetic.
+- On non-Windows: exits successfully without attempting capture.
+
 ## 4. Start Local Host Runtime
 
 Default runtime starts with the macOS adapter on loopback:
