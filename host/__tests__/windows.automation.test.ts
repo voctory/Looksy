@@ -338,6 +338,11 @@ describe("WindowsAdapter automation commands", () => {
 
     const focusWindowScript = __windowsCaptureTestInternals.buildWindowsFocusWindowPowerShellScript("hwnd-ABC");
     expect(focusWindowScript).toContain("SetForegroundWindow");
+    expect(focusWindowScript).toContain("GetForegroundWindow");
+    expect(focusWindowScript).toContain("BringWindowToTop");
+    expect(focusWindowScript).toContain("for ($attempt = 1; $attempt -le $maxAttempts; $attempt++)");
+    expect(focusWindowScript).toContain("status = 'focusNotAcquired'");
+    expect(focusWindowScript).toContain("errorCode = 'setForegroundWindowReturnedFalse'");
     expect(focusWindowScript).toContain("^hwnd-([0-9A-Fa-f]+)$");
 
     const clickScript = __windowsCaptureTestInternals.buildWindowsClickPowerShellScript({
@@ -396,10 +401,69 @@ describe("WindowsAdapter automation commands", () => {
     expect(scrollScript).toContain("Send-LooksyInput -inputs $inputs.ToArray()");
     expect(scrollScript).not.toContain("keybd_event");
 
-    const dipScaleScript = __windowsCaptureTestInternals.buildWindowsScreenDipScalePowerShellScript();
-    expect(dipScaleScript).toContain("[LooksyDpiScaleNative]::GetDpiForSystem()");
-    expect(dipScaleScript).toContain("[LooksyDpiScaleNative]::GetDeviceCaps($desktopDc, [LooksyDpiScaleNative]::LOGPIXELSX)");
-    expect(dipScaleScript).toContain("[PSCustomObject]@{ scale = [double]$scale } | ConvertTo-Json -Compress");
+    const dipPointScript = __windowsCaptureTestInternals.buildWindowsScreenDipToPhysicalPointPowerShellScript({
+      x: 111,
+      y: 222,
+      space: "screen-dip",
+    });
+    expect(dipPointScript).toContain("[LooksyDipConversionNative]::MonitorFromPoint");
+    expect(dipPointScript).toContain("[LooksyDipConversionNative]::GetDpiForMonitor");
+    expect(dipPointScript).toContain("[LooksyDipConversionNative]::GetDpiForSystem()");
+    expect(dipPointScript).toContain(
+      "[LooksyDipConversionNative]::GetDeviceCaps($desktopDc, [LooksyDipConversionNative]::LOGPIXELSX)",
+    );
+    expect(dipPointScript).toContain("Resolve-LooksyFallbackScale");
+    expect(dipPointScript).toContain("[PSCustomObject]@{ x = [int]$x; y = [int]$y; scale = [double]$scale } | ConvertTo-Json -Compress");
+  });
+
+  it("parses focus and dip conversion payloads with typed errors", () => {
+    expect(
+      __windowsCaptureTestInternals.parseFocusWindowPayload({
+        focused: true,
+        status: "focused",
+      }),
+    ).toBe(true);
+    expect(
+      __windowsCaptureTestInternals.parseFocusWindowPayload({
+        focused: false,
+      }),
+    ).toBe(false);
+    expect(() =>
+      __windowsCaptureTestInternals.parseFocusWindowPayload({
+        focused: false,
+        status: "invalidWindowId",
+      }),
+    ).toThrowError("WINDOWS_APP_FOCUS_WINDOW_INVALID_WINDOW_ID");
+    expect(() =>
+      __windowsCaptureTestInternals.parseFocusWindowPayload({
+        focused: false,
+        status: "windowNotFound",
+      }),
+    ).toThrowError("WINDOWS_APP_FOCUS_WINDOW_WINDOW_NOT_FOUND");
+    expect(() =>
+      __windowsCaptureTestInternals.parseFocusWindowPayload({
+        focused: false,
+        status: "focusNotAcquired",
+        errorCode: "foregroundWindowDidNotMatch",
+      }),
+    ).toThrowError("WINDOWS_APP_FOCUS_WINDOW_FOCUS_NOT_ACQUIRED:foregroundWindowDidNotMatch");
+
+    expect(
+      __windowsCaptureTestInternals.parseWindowsScreenDipToPhysicalPointPayload({
+        x: 120.4,
+        y: 481.7,
+        scale: 1.5,
+      }),
+    ).toEqual({
+      x: 120,
+      y: 482,
+    });
+    expect(() =>
+      __windowsCaptureTestInternals.parseWindowsScreenDipToPhysicalPointPayload({
+        x: Number.NaN,
+        y: 2,
+      }),
+    ).toThrowError("WINDOWS_SCREEN_DIP_CONVERSION_INVALID_JSON");
   });
 
   it.runIf(process.platform !== "win32")(

@@ -1231,25 +1231,86 @@ function buildWindowsFocusWindowPowerShellScript(windowId: string): string {
     "  [DllImport(\"user32.dll\")]",
     "  public static extern bool ShowWindowAsync(IntPtr hWnd, int nCmdShow);",
     "  [DllImport(\"user32.dll\")]",
+    "  public static extern IntPtr GetForegroundWindow();",
+    "  [DllImport(\"user32.dll\")]",
+    "  public static extern bool BringWindowToTop(IntPtr hWnd);",
+    "  [DllImport(\"user32.dll\")]",
     "  public static extern bool SetForegroundWindow(IntPtr hWnd);",
     "}",
     "\"@",
     "}",
     `$windowId = '${escapedWindowId}'`,
     "$match = [regex]::Match($windowId, '^hwnd-([0-9A-Fa-f]+)$')",
-    "if (-not $match.Success) { [PSCustomObject]@{ focused = $false } | ConvertTo-Json -Compress; return }",
+    "if (-not $match.Success) {",
+    "  [PSCustomObject]@{ focused = $false; status = 'invalidWindowId' } | ConvertTo-Json -Compress",
+    "  return",
+    "}",
     "$hWndValue = [Convert]::ToInt64($match.Groups[1].Value, 16)",
     "$hWnd = [IntPtr]::new($hWndValue)",
-    "if (-not [LooksyWindowFocusNative]::IsWindow($hWnd)) { [PSCustomObject]@{ focused = $false } | ConvertTo-Json -Compress; return }",
-    "if ([LooksyWindowFocusNative]::IsIconic($hWnd)) { [void][LooksyWindowFocusNative]::ShowWindowAsync($hWnd, 9) }",
-    "$focused = [LooksyWindowFocusNative]::SetForegroundWindow($hWnd)",
-    "[PSCustomObject]@{ focused = [bool]$focused } | ConvertTo-Json -Compress",
+    "if (-not [LooksyWindowFocusNative]::IsWindow($hWnd)) {",
+    "  [PSCustomObject]@{ focused = $false; status = 'windowNotFound' } | ConvertTo-Json -Compress",
+    "  return",
+    "}",
+    "$focused = $false",
+    "$status = 'focusNotAcquired'",
+    "$errorCode = $null",
+    "$maxAttempts = 4",
+    "for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {",
+    "  if ([LooksyWindowFocusNative]::IsIconic($hWnd)) {",
+    "    [void][LooksyWindowFocusNative]::ShowWindowAsync($hWnd, 9)",
+    "    Start-Sleep -Milliseconds 20",
+    "  }",
+    "  [void][LooksyWindowFocusNative]::ShowWindowAsync($hWnd, 5)",
+    "  [void][LooksyWindowFocusNative]::BringWindowToTop($hWnd)",
+    "  $setForeground = [LooksyWindowFocusNative]::SetForegroundWindow($hWnd)",
+    "  $foregroundWindow = [LooksyWindowFocusNative]::GetForegroundWindow()",
+    "  if ($foregroundWindow -eq $hWnd) {",
+    "    $focused = $true",
+    "    $status = 'focused'",
+    "    $errorCode = $null",
+    "    break",
+    "  }",
+    "  if (-not $setForeground) {",
+    "    $errorCode = 'setForegroundWindowReturnedFalse'",
+    "  } elseif ($errorCode -eq $null) {",
+    "    $errorCode = 'foregroundWindowDidNotMatch'",
+    "  }",
+    "  Start-Sleep -Milliseconds 40",
+    "}",
+    "if (-not $focused -and $errorCode -eq $null) { $errorCode = 'focusRetryExhausted' }",
+    "$payload = [ordered]@{ focused = [bool]$focused; status = [string]$status }",
+    "if (-not $focused -and $errorCode) { $payload.errorCode = [string]$errorCode }",
+    "[PSCustomObject]$payload | ConvertTo-Json -Compress",
   ].join("\n");
 }
 
 function parseFocusWindowPayload(payload: unknown): boolean {
-  if (isRecord(payload) && typeof payload.focused === "boolean") {
+  if (!isRecord(payload) || typeof payload.focused !== "boolean") {
+    throw new Error("WINDOWS_APP_FOCUS_WINDOW_INVALID_JSON");
+  }
+  const status = typeof payload.status === "string" ? payload.status : null;
+  if (status === null) {
     return payload.focused;
+  }
+
+  switch (status) {
+    case "focused":
+      if (payload.focused) {
+        return true;
+      }
+      break;
+    case "invalidWindowId":
+      throw new Error("WINDOWS_APP_FOCUS_WINDOW_INVALID_WINDOW_ID");
+    case "windowNotFound":
+      throw new Error("WINDOWS_APP_FOCUS_WINDOW_WINDOW_NOT_FOUND");
+    case "focusNotAcquired": {
+      if (typeof payload.errorCode === "string" && payload.errorCode.length > 0) {
+        throw new Error(`WINDOWS_APP_FOCUS_WINDOW_FOCUS_NOT_ACQUIRED:${payload.errorCode}`);
+      }
+      throw new Error("WINDOWS_APP_FOCUS_WINDOW_FOCUS_NOT_ACQUIRED");
+    }
+    default:
+      break;
   }
   throw new Error("WINDOWS_APP_FOCUS_WINDOW_INVALID_JSON");
 }
@@ -1272,77 +1333,109 @@ async function captureWindowsScreenViaPowerShell(params: WindowsCaptureScreenPar
   return bytes;
 }
 
-let cachedWindowsScreenDipScale: number | null = null;
-
-function buildWindowsScreenDipScalePowerShellScript(): string {
+function buildWindowsScreenDipToPhysicalPointPowerShellScript(
+  point: WindowsScreenDipToPhysicalPointParams["point"],
+): string {
+  const dipX = Number(point.x);
+  const dipY = Number(point.y);
   return [
     "$ErrorActionPreference = 'Stop'",
-    "if (-not (\"LooksyDpiScaleNative\" -as [type])) {",
+    "if (-not (\"LooksyDipConversionNative\" -as [type])) {",
     "  Add-Type -TypeDefinition @\"",
     "using System;",
     "using System.Runtime.InteropServices;",
-    "public static class LooksyDpiScaleNative {",
+    "public static class LooksyDipConversionNative {",
+    "  [StructLayout(LayoutKind.Sequential)]",
+    "  public struct POINT {",
+    "    public int X;",
+    "    public int Y;",
+    "  }",
     "  public const int LOGPIXELSX = 88;",
     "  [DllImport(\"user32.dll\", SetLastError = true)]",
     "  public static extern uint GetDpiForSystem();",
+    "  [DllImport(\"user32.dll\", SetLastError = true)]",
+    "  public static extern IntPtr MonitorFromPoint(POINT pt, uint dwFlags);",
     "  [DllImport(\"user32.dll\", SetLastError = true)]",
     "  public static extern IntPtr GetDC(IntPtr hWnd);",
     "  [DllImport(\"user32.dll\", SetLastError = true)]",
     "  public static extern int ReleaseDC(IntPtr hWnd, IntPtr hDC);",
     "  [DllImport(\"gdi32.dll\", SetLastError = true)]",
     "  public static extern int GetDeviceCaps(IntPtr hdc, int index);",
+    "  [DllImport(\"shcore.dll\", SetLastError = true)]",
+    "  public static extern int GetDpiForMonitor(IntPtr hMonitor, int dpiType, out uint dpiX, out uint dpiY);",
     "}",
     "\"@",
     "}",
-    "$dpi = 96.0",
-    "$resolvedWithGetDpiForSystem = $false",
-    "try {",
-    "  $dpiForSystem = [double][LooksyDpiScaleNative]::GetDpiForSystem()",
-    "  if ($dpiForSystem -gt 0) {",
-    "    $dpi = $dpiForSystem",
-    "    $resolvedWithGetDpiForSystem = $true",
+    "$dipX = [double]" + dipX.toString(),
+    "$dipY = [double]" + dipY.toString(),
+    "function Resolve-LooksyFallbackScale {",
+    "  $dpi = 96.0",
+    "  try {",
+    "    $dpiForSystem = [double][LooksyDipConversionNative]::GetDpiForSystem()",
+    "    if ($dpiForSystem -gt 0) { return ($dpiForSystem / 96.0) }",
+    "  } catch {",
     "  }",
-    "} catch {",
-    "}",
-    "if (-not $resolvedWithGetDpiForSystem) {",
-    "  $desktopDc = [LooksyDpiScaleNative]::GetDC([IntPtr]::Zero)",
+    "  $desktopDc = [LooksyDipConversionNative]::GetDC([IntPtr]::Zero)",
     "  try {",
     "    if ($desktopDc -ne [IntPtr]::Zero) {",
-    "      $logPixelsX = [LooksyDpiScaleNative]::GetDeviceCaps($desktopDc, [LooksyDpiScaleNative]::LOGPIXELSX)",
-    "      if ($logPixelsX -gt 0) {",
-    "        $dpi = [double]$logPixelsX",
-    "      }",
+    "      $logPixelsX = [LooksyDipConversionNative]::GetDeviceCaps($desktopDc, [LooksyDipConversionNative]::LOGPIXELSX)",
+    "      if ($logPixelsX -gt 0) { $dpi = [double]$logPixelsX }",
     "    }",
     "  } finally {",
-    "    if ($desktopDc -ne [IntPtr]::Zero) { [void][LooksyDpiScaleNative]::ReleaseDC([IntPtr]::Zero, $desktopDc) }",
+    "    if ($desktopDc -ne [IntPtr]::Zero) {",
+    "      [void][LooksyDipConversionNative]::ReleaseDC([IntPtr]::Zero, $desktopDc)",
+    "    }",
+    "  }",
+    "  return ($dpi / 96.0)",
+    "}",
+    "$scale = Resolve-LooksyFallbackScale",
+    "if ([double]::IsNaN($scale) -or [double]::IsInfinity($scale) -or $scale -le 0) { $scale = 1.0 }",
+    "$monitorDefaultToNearest = 2",
+    "$dpiTypeEffective = 0",
+    "for ($attempt = 1; $attempt -le 3; $attempt++) {",
+    "  $candidatePoint = New-Object LooksyDipConversionNative+POINT",
+    "  $candidatePoint.X = [int][Math]::Round($dipX * $scale)",
+    "  $candidatePoint.Y = [int][Math]::Round($dipY * $scale)",
+    "  $monitor = [LooksyDipConversionNative]::MonitorFromPoint($candidatePoint, [uint32]$monitorDefaultToNearest)",
+    "  if ($monitor -eq [IntPtr]::Zero) { break }",
+    "  try {",
+    "    $dpiX = [uint32]96",
+    "    $dpiY = [uint32]96",
+    "    $hr = [LooksyDipConversionNative]::GetDpiForMonitor($monitor, $dpiTypeEffective, [ref]$dpiX, [ref]$dpiY)",
+    "    if ($hr -eq 0 -and $dpiX -gt 0) {",
+    "      $monitorScale = [double]$dpiX / 96.0",
+    "      if ($monitorScale -gt 0 -and -not [double]::IsNaN($monitorScale) -and -not [double]::IsInfinity($monitorScale)) {",
+    "        if ([Math]::Abs($monitorScale - $scale) -lt 0.0001) {",
+    "          $scale = $monitorScale",
+    "          break",
+    "        }",
+    "        $scale = $monitorScale",
+    "      }",
+    "    }",
+    "  } catch {",
+    "    break",
     "  }",
     "}",
-    "if ($dpi -le 0) { $dpi = 96.0 }",
-    "$scale = $dpi / 96.0",
-    "if ([double]::IsNaN($scale) -or [double]::IsInfinity($scale) -or $scale -le 0) { $scale = 1.0 }",
-    "[PSCustomObject]@{ scale = [double]$scale } | ConvertTo-Json -Compress",
+    "$x = [int][Math]::Round($dipX * $scale)",
+    "$y = [int][Math]::Round($dipY * $scale)",
+    "[PSCustomObject]@{ x = [int]$x; y = [int]$y; scale = [double]$scale } | ConvertTo-Json -Compress",
   ].join("\n");
 }
 
-function parseWindowsScreenDipScalePayload(payload: unknown): number {
-  if (isRecord(payload) && typeof payload.scale === "number" && Number.isFinite(payload.scale) && payload.scale > 0) {
-    return payload.scale;
+function parseWindowsScreenDipToPhysicalPointPayload(payload: unknown): { x: number; y: number } {
+  if (
+    isRecord(payload) &&
+    typeof payload.x === "number" &&
+    Number.isFinite(payload.x) &&
+    typeof payload.y === "number" &&
+    Number.isFinite(payload.y)
+  ) {
+    return {
+      x: Math.round(payload.x),
+      y: Math.round(payload.y),
+    };
   }
-  throw new Error("WINDOWS_SCREEN_DIP_SCALE_INVALID_JSON");
-}
-
-async function getWindowsScreenDipScale(signal: AbortSignal): Promise<number> {
-  if (cachedWindowsScreenDipScale !== null) {
-    return cachedWindowsScreenDipScale;
-  }
-  const payload = await runPowerShellJson(
-    buildWindowsScreenDipScalePowerShellScript(),
-    signal,
-    "WINDOWS_SCREEN_DIP_SCALE",
-  );
-  const scale = parseWindowsScreenDipScalePayload(payload);
-  cachedWindowsScreenDipScale = scale;
-  return scale;
+  throw new Error("WINDOWS_SCREEN_DIP_CONVERSION_INVALID_JSON");
 }
 
 async function convertScreenDipToPhysicalPoint(
@@ -1355,10 +1448,15 @@ async function convertScreenDipToPhysicalPoint(
       y: params.point.y,
     };
   }
-  const scale = await getWindowsScreenDipScale(params.signal);
+  const payload = await runPowerShellJson(
+    buildWindowsScreenDipToPhysicalPointPowerShellScript(params.point),
+    params.signal,
+    "WINDOWS_SCREEN_DIP_CONVERSION",
+  );
+  const converted = parseWindowsScreenDipToPhysicalPointPayload(payload);
   throwIfAborted(params.signal);
-  const x = Math.round(params.point.x * scale);
-  const y = Math.round(params.point.y * scale);
+  const x = converted.x;
+  const y = converted.y;
   if (!Number.isFinite(x) || !Number.isFinite(y)) {
     throw new Error("WINDOWS_SCREEN_DIP_SCALE_INVALID_RESULT");
   }
@@ -1550,7 +1648,9 @@ export const __windowsCaptureTestInternals = {
   buildWindowsScrollPowerShellScript,
   buildWindowsListWindowsPowerShellScript,
   buildWindowsFocusWindowPowerShellScript,
-  buildWindowsScreenDipScalePowerShellScript,
+  parseFocusWindowPayload,
+  buildWindowsScreenDipToPhysicalPointPowerShellScript,
+  parseWindowsScreenDipToPhysicalPointPayload,
 };
 
 function deriveBrowserTitle(url: string): string {
