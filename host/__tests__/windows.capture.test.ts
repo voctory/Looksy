@@ -34,8 +34,17 @@ describe("WindowsAdapter screen.capture", () => {
       format: "png",
       signal: new AbortController().signal,
     });
-    expect(script).toContain("[LooksyNativeMethods]::SetProcessDPIAware()");
+    expect(script).toContain("if (-not (\"LooksyDpiAwareness\" -as [type])) {");
+    expect(script).toContain("[LooksyDpiAwareness]::SetProcessDpiAwarenessContext([IntPtr]::new(-4))");
+    expect(script).toContain("[LooksyDpiAwareness]::SetProcessDpiAwareness(2)");
+    expect(script).toContain("[LooksyDpiAwareness]::SetProcessDPIAware()");
     expect(script).toContain("[System.Windows.Forms.SystemInformation]::VirtualScreen");
+    expect(
+      script.indexOf("[LooksyDpiAwareness]::SetProcessDpiAwarenessContext([IntPtr]::new(-4))"),
+    ).toBeLessThan(script.indexOf("[System.Windows.Forms.SystemInformation]::VirtualScreen"));
+    expect(script.indexOf("[LooksyDpiAwareness]::SetProcessDPIAware()")).toBeLessThan(
+      script.indexOf("$graphics.CopyFromScreen($rect.X, $rect.Y, 0, 0, $rect.Size)"),
+    );
     expect(script).not.toContain("PrimaryScreen.Bounds");
   });
 

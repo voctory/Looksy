@@ -393,7 +393,8 @@ function buildWindowsCapturePowerShellScript(params: WindowsCaptureScreenParams)
       : "$imageFormat = [System.Drawing.Imaging.ImageFormat]::Png";
   return [
     "$ErrorActionPreference = 'Stop'",
-    "Add-Type -TypeDefinition @\"",
+    "if (-not (\"LooksyDpiAwareness\" -as [type])) {",
+    "  Add-Type -TypeDefinition @\"",
     "using System;",
     "using System.Runtime.InteropServices;",
     "public static class LooksyDpiAwareness {",
@@ -405,6 +406,7 @@ function buildWindowsCapturePowerShellScript(params: WindowsCaptureScreenParams)
     "  public static extern int SetProcessDpiAwareness(int awareness);",
     "}",
     "\"@",
+    "}",
     "try {",
     "  try {",
     "    [void][LooksyDpiAwareness]::SetProcessDpiAwarenessContext([IntPtr]::new(-4))",
