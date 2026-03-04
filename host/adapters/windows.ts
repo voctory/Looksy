@@ -1,6 +1,22 @@
+import { spawn } from "node:child_process";
 import type { CommandResultPayload, WindowInfo } from "../../protocol";
 import type { AdapterCommandPayload, AdapterExecutionContext, HostAdapter } from "../types";
 import { mimeTypeForFormat, sleepAbortable, type SimulatedAdapterOptions, type SimulatedElement, throwIfAborted } from "./shared";
+
+type ScreenCaptureCommand = Extract<AdapterCommandPayload, { type: "screen.capture" }>;
+type ScreenCaptureRegion = NonNullable<ScreenCaptureCommand["region"]>;
+type WindowsCaptureScreenParams = {
+  format: "png" | "jpeg";
+  region?: ScreenCaptureRegion;
+  signal: AbortSignal;
+};
+type WindowsCaptureScreenFn = (params: WindowsCaptureScreenParams) => Promise<Buffer>;
+
+export interface WindowsAdapterOptions extends SimulatedAdapterOptions {
+  captureScreen?: WindowsCaptureScreenFn;
+}
+
+const WINDOWS_CAPTURE_NON_WIN32_MESSAGE = "WINDOWS_SCREEN_CAPTURE_UNSUPPORTED_ON_NON_WINDOWS";
 
 const WINDOWS_CAPABILITIES: readonly AdapterCommandPayload["type"][] = [
   "health.ping",
@@ -27,6 +43,7 @@ const WINDOWS_CAPABILITIES: readonly AdapterCommandPayload["type"][] = [
 export class WindowsAdapter implements HostAdapter {
   readonly platform = "windows" as const;
   private readonly delayMsByCommand: Partial<Record<AdapterCommandPayload["type"], number>>;
+  private readonly captureScreen: WindowsCaptureScreenFn;
   private readonly windows: WindowInfo[];
   private readonly elements: SimulatedElement[];
   private readonly elementValues = new Map<string, string>();
@@ -46,8 +63,9 @@ export class WindowsAdapter implements HostAdapter {
     }
   >();
 
-  constructor(options: SimulatedAdapterOptions = {}) {
+  constructor(options: WindowsAdapterOptions = {}) {
     this.delayMsByCommand = options.delayMsByCommand ?? {};
+    this.captureScreen = options.captureScreen ?? captureWindowsScreenViaPowerShell;
     this.windows = [
       {
         windowId: "win-main",
@@ -105,15 +123,21 @@ export class WindowsAdapter implements HostAdapter {
         };
       case "screen.capture": {
         const artifactId = `windows-${context.requestId}`;
-        const mimeType = mimeTypeForFormat(command.format);
+        const format = command.format ?? "png";
+        const mimeType = mimeTypeForFormat(format);
         const capturedAt = new Date().toISOString();
+        const bytes = await this.captureScreen({
+          format,
+          region: command.region,
+          signal: context.signal,
+        });
+        if (bytes.byteLength === 0) {
+          throw new Error("WINDOWS_SCREEN_CAPTURE_EMPTY_BYTES");
+        }
         context.persistScreenshotArtifact({
           artifactId,
           mimeType,
-          bytes: Buffer.from(
-            `looksy-screenshot:${this.platform}:${context.requestId}:${command.format ?? "png"}`,
-            "utf8",
-          ),
+          bytes,
           capturedAt,
         });
         return {
@@ -325,6 +349,148 @@ export class WindowsAdapter implements HostAdapter {
       activeTrace.eventCount += 1;
     }
   }
+}
+
+async function captureWindowsScreenViaPowerShell(params: WindowsCaptureScreenParams): Promise<Buffer> {
+  if (process.platform !== "win32") {
+    throw new Error(WINDOWS_CAPTURE_NON_WIN32_MESSAGE);
+  }
+
+  const script = buildWindowsCapturePowerShellScript(params);
+  const encodedCommand = Buffer.from(script, "utf16le").toString("base64");
+  const bytes = await runPowerShellCapture(encodedCommand, params.signal);
+  if (bytes.byteLength === 0) {
+    throw new Error("WINDOWS_SCREEN_CAPTURE_EMPTY_BYTES");
+  }
+  return bytes;
+}
+
+function normalizeCaptureRegion(region?: ScreenCaptureRegion): { x: number; y: number; width: number; height: number } | null {
+  if (!region) {
+    return null;
+  }
+  const x = Math.round(region.x);
+  const y = Math.round(region.y);
+  const width = Math.round(region.width);
+  const height = Math.round(region.height);
+  if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(width) || !Number.isFinite(height)) {
+    throw new Error("WINDOWS_SCREEN_CAPTURE_INVALID_REGION");
+  }
+  if (width <= 0 || height <= 0) {
+    throw new Error("WINDOWS_SCREEN_CAPTURE_INVALID_REGION");
+  }
+  return { x, y, width, height };
+}
+
+function buildWindowsCapturePowerShellScript(params: WindowsCaptureScreenParams): string {
+  const region = normalizeCaptureRegion(params.region);
+  const rectLine = region
+    ? `$rect = New-Object System.Drawing.Rectangle(${region.x}, ${region.y}, ${region.width}, ${region.height})`
+    : "$rect = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds";
+  const imageFormatLine =
+    params.format === "jpeg"
+      ? "$imageFormat = [System.Drawing.Imaging.ImageFormat]::Jpeg"
+      : "$imageFormat = [System.Drawing.Imaging.ImageFormat]::Png";
+  return [
+    "$ErrorActionPreference = 'Stop'",
+    "Add-Type -AssemblyName System.Windows.Forms",
+    "Add-Type -AssemblyName System.Drawing",
+    rectLine,
+    "if ($rect.Width -le 0 -or $rect.Height -le 0) { throw 'Invalid capture rectangle' }",
+    imageFormatLine,
+    "$bitmap = New-Object System.Drawing.Bitmap $rect.Width, $rect.Height",
+    "$graphics = [System.Drawing.Graphics]::FromImage($bitmap)",
+    "try {",
+    "  $graphics.CopyFromScreen($rect.X, $rect.Y, 0, 0, $rect.Size)",
+    "  $stream = New-Object System.IO.MemoryStream",
+    "  try {",
+    "    $bitmap.Save($stream, $imageFormat)",
+    "    $bytes = $stream.ToArray()",
+    "    [Console]::OpenStandardOutput().Write($bytes, 0, $bytes.Length)",
+    "  } finally {",
+    "    $stream.Dispose()",
+    "  }",
+    "} finally {",
+    "  $graphics.Dispose()",
+    "  $bitmap.Dispose()",
+    "}",
+  ].join("\n");
+}
+
+async function runPowerShellCapture(encodedCommand: string, signal: AbortSignal): Promise<Buffer> {
+  const candidates = ["powershell.exe", "pwsh.exe", "pwsh"] as const;
+  let lastNotFoundError: unknown;
+
+  for (const executable of candidates) {
+    try {
+      return await runEncodedPowerShell(executable, encodedCommand, signal);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException)?.code === "ENOENT") {
+        lastNotFoundError = error;
+        continue;
+      }
+      throw error;
+    }
+  }
+
+  throw new Error(
+    `WINDOWS_SCREEN_CAPTURE_POWERSHELL_NOT_FOUND${
+      lastNotFoundError ? `: ${String(lastNotFoundError)}` : ""
+    }`,
+  );
+}
+
+function runEncodedPowerShell(
+  executable: string,
+  encodedCommand: string,
+  signal: AbortSignal,
+): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(
+      executable,
+      [
+        "-NoLogo",
+        "-NoProfile",
+        "-NonInteractive",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-EncodedCommand",
+        encodedCommand,
+      ],
+      {
+        windowsHide: true,
+        stdio: ["ignore", "pipe", "pipe"],
+        signal,
+      },
+    );
+
+    const stdoutChunks: Buffer[] = [];
+    const stderrChunks: Buffer[] = [];
+
+    child.stdout?.on("data", (chunk) => {
+      stdoutChunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    });
+    child.stderr?.on("data", (chunk) => {
+      stderrChunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    });
+    child.once("error", (error) => {
+      reject(error);
+    });
+    child.once("close", (code) => {
+      if (code === 0) {
+        resolve(Buffer.concat(stdoutChunks));
+        return;
+      }
+      const stderr = Buffer.concat(stderrChunks).toString("utf8").trim();
+      reject(
+        new Error(
+          `WINDOWS_SCREEN_CAPTURE_POWERSHELL_FAILED (${executable}, exit=${String(code)}${
+            stderr ? `, stderr=${stderr}` : ""
+          })`,
+        ),
+      );
+    });
+  });
 }
 
 function deriveBrowserTitle(url: string): string {

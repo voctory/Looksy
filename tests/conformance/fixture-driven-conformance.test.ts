@@ -8,6 +8,10 @@ import { assertEnvelopeSubset, assertErrorEnvelopeParity } from "../helpers/enve
 import { applySessionPlaceholder, loadConformanceMatrix, loadFixture, type FixtureCase } from "../helpers/fixture-loader";
 
 const VALID_TOKEN = "token-fixture-valid";
+const TEST_WINDOWS_CAPTURE_BYTES = Buffer.from([
+  0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+  0x00, 0x00, 0x00, 0x00,
+]);
 
 const adapters = {
   macos: () => new MacOSAdapter(),
@@ -30,6 +34,10 @@ function createHostCore(platform: PlatformName, fixtureCase: FixtureCase): HostC
             fixtureCase.tags?.includes("timeout") || fixtureCase.tags?.includes("cancel")
               ? { "screen.capture": 120 }
               : {},
+          captureScreen: async ({ format }) =>
+            format === "jpeg"
+              ? Buffer.from([0xff, 0xd8, 0xff, 0xd9])
+              : Buffer.from(TEST_WINDOWS_CAPTURE_BYTES),
         });
 
   const policy = fixtureCase.tags?.includes("policy")
