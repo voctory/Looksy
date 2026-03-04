@@ -143,6 +143,38 @@ const InputScrollCommandSchema = z
   })
   .strict();
 
+const InputDragCommandSchema = z
+  .object({
+    type: z.literal("input.drag"),
+    start: PointSchema,
+    end: PointSchema,
+    button: MouseButtonSchema.optional(),
+    modifiers: z.array(z.string().trim().min(1)).max(8).optional(),
+  })
+  .strict();
+
+const InputSwipeCommandSchema = z
+  .object({
+    type: z.literal("input.swipe"),
+    start: PointSchema,
+    end: PointSchema,
+    modifiers: z.array(z.string().trim().min(1)).max(8).optional(),
+  })
+  .strict();
+
+const ClipboardReadCommandSchema = z
+  .object({
+    type: z.literal("clipboard.read"),
+  })
+  .strict();
+
+const ClipboardWriteCommandSchema = z
+  .object({
+    type: z.literal("clipboard.write"),
+    text: z.string(),
+  })
+  .strict();
+
 const AppListWindowsCommandSchema = z
   .object({
     type: z.literal("app.listWindows"),
@@ -154,6 +186,45 @@ const AppListWindowsCommandSchema = z
 const AppFocusWindowCommandSchema = z
   .object({
     type: z.literal("app.focusWindow"),
+    windowId: z.string().min(1),
+  })
+  .strict();
+
+const AppWindowMoveCommandSchema = z
+  .object({
+    type: z.literal("app.windowMove"),
+    windowId: z.string().min(1),
+    point: PointSchema,
+  })
+  .strict();
+
+const AppWindowResizeCommandSchema = z
+  .object({
+    type: z.literal("app.windowResize"),
+    windowId: z.string().min(1),
+    width: z.number().finite().positive(),
+    height: z.number().finite().positive(),
+    space: CoordinateSpaceSchema,
+  })
+  .strict();
+
+const AppWindowMinimizeCommandSchema = z
+  .object({
+    type: z.literal("app.windowMinimize"),
+    windowId: z.string().min(1),
+  })
+  .strict();
+
+const AppWindowMaximizeCommandSchema = z
+  .object({
+    type: z.literal("app.windowMaximize"),
+    windowId: z.string().min(1),
+  })
+  .strict();
+
+const AppWindowCloseCommandSchema = z
+  .object({
+    type: z.literal("app.windowClose"),
     windowId: z.string().min(1),
   })
   .strict();
@@ -245,8 +316,17 @@ export const CommandPayloadSchema = z.discriminatedUnion("type", [
   InputTypeTextCommandSchema,
   InputPressKeyCommandSchema,
   InputScrollCommandSchema,
+  InputDragCommandSchema,
+  InputSwipeCommandSchema,
+  ClipboardReadCommandSchema,
+  ClipboardWriteCommandSchema,
   AppListWindowsCommandSchema,
   AppFocusWindowCommandSchema,
+  AppWindowMoveCommandSchema,
+  AppWindowResizeCommandSchema,
+  AppWindowMinimizeCommandSchema,
+  AppWindowMaximizeCommandSchema,
+  AppWindowCloseCommandSchema,
   BrowserNavigateCommandSchema,
   BrowserSnapshotCommandSchema,
   BrowserPdfCommandSchema,
@@ -337,6 +417,39 @@ const InputScrolledResultSchema = z
   })
   .strict();
 
+const InputDraggedResultSchema = z
+  .object({
+    type: z.literal("input.dragged"),
+    start: PointSchema,
+    end: PointSchema,
+    button: MouseButtonSchema.optional(),
+    modifiers: z.array(z.string().trim().min(1)).max(8).optional(),
+  })
+  .strict();
+
+const InputSwipedResultSchema = z
+  .object({
+    type: z.literal("input.swiped"),
+    start: PointSchema,
+    end: PointSchema,
+    modifiers: z.array(z.string().trim().min(1)).max(8).optional(),
+  })
+  .strict();
+
+const ClipboardReadResultSchema = z
+  .object({
+    type: z.literal("clipboard.read"),
+    text: z.string(),
+  })
+  .strict();
+
+const ClipboardWrittenResultSchema = z
+  .object({
+    type: z.literal("clipboard.written"),
+    textLength: z.number().int().nonnegative(),
+  })
+  .strict();
+
 const AppWindowsListedResultSchema = z
   .object({
     type: z.literal("app.windowsListed"),
@@ -349,6 +462,46 @@ const AppWindowFocusedResultSchema = z
     type: z.literal("app.windowFocused"),
     windowId: z.string().min(1),
     focused: z.boolean(),
+  })
+  .strict();
+
+const AppWindowMovedResultSchema = z
+  .object({
+    type: z.literal("app.windowMoved"),
+    windowId: z.string().min(1),
+    bounds: RectSchema,
+  })
+  .strict();
+
+const AppWindowResizedResultSchema = z
+  .object({
+    type: z.literal("app.windowResized"),
+    windowId: z.string().min(1),
+    bounds: RectSchema,
+  })
+  .strict();
+
+const AppWindowMinimizedResultSchema = z
+  .object({
+    type: z.literal("app.windowMinimized"),
+    windowId: z.string().min(1),
+    minimized: z.boolean(),
+  })
+  .strict();
+
+const AppWindowMaximizedResultSchema = z
+  .object({
+    type: z.literal("app.windowMaximized"),
+    windowId: z.string().min(1),
+    maximized: z.boolean(),
+  })
+  .strict();
+
+const AppWindowClosedResultSchema = z
+  .object({
+    type: z.literal("app.windowClosed"),
+    windowId: z.string().min(1),
+    closed: z.boolean(),
   })
   .strict();
 
@@ -457,8 +610,17 @@ export const CommandResultPayloadSchema = z.discriminatedUnion("type", [
   InputTypedResultSchema,
   InputKeyPressedResultSchema,
   InputScrolledResultSchema,
+  InputDraggedResultSchema,
+  InputSwipedResultSchema,
+  ClipboardReadResultSchema,
+  ClipboardWrittenResultSchema,
   AppWindowsListedResultSchema,
   AppWindowFocusedResultSchema,
+  AppWindowMovedResultSchema,
+  AppWindowResizedResultSchema,
+  AppWindowMinimizedResultSchema,
+  AppWindowMaximizedResultSchema,
+  AppWindowClosedResultSchema,
   BrowserNavigatedResultSchema,
   BrowserSnapshotResultSchema,
   BrowserPdfResultSchema,

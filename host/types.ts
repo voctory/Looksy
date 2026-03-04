@@ -3,7 +3,23 @@ import type { CommandPayload, CommandResultPayload, HandshakeRequest, Platform }
 export type RequestId = string;
 
 type HostManagedCommandPayload = Extract<CommandPayload, { type: "control.cancel" | "observability.getMetrics" }>;
-export type AdapterCommandPayload = Exclude<CommandPayload, HostManagedCommandPayload>;
+type ProtocolOnlyCommandPayload = Extract<
+  CommandPayload,
+  {
+    type:
+      | "input.drag"
+      | "input.swipe"
+      | "clipboard.read"
+      | "clipboard.write"
+      | "app.windowMove"
+      | "app.windowResize"
+      | "app.windowMinimize"
+      | "app.windowMaximize"
+      | "app.windowClose";
+  }
+>;
+
+export type AdapterCommandPayload = Exclude<CommandPayload, HostManagedCommandPayload | ProtocolOnlyCommandPayload>;
 export type AdapterCommandType = AdapterCommandPayload["type"];
 
 export interface ScreenshotArtifactPayload {

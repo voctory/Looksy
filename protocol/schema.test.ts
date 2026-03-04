@@ -104,6 +104,175 @@ describe("protocol schemas", () => {
     expect(invalidScroll.success).toBe(false);
   });
 
+  it("accepts drag/swipe, clipboard, and window lifecycle command envelopes", () => {
+    const drag = CommandEnvelopeSchema.safeParse({
+      protocolVersion: PROTOCOL_VERSION,
+      requestId: "cmd-drag",
+      sessionId: "session-1",
+      command: {
+        type: "input.drag",
+        start: {
+          x: 20,
+          y: 30,
+          space: "screen-dip",
+        },
+        end: {
+          x: 260,
+          y: 300,
+          space: "screen-dip",
+        },
+        button: "left",
+      },
+    });
+    expect(drag.success).toBe(true);
+
+    const swipe = CommandEnvelopeSchema.safeParse({
+      protocolVersion: PROTOCOL_VERSION,
+      requestId: "cmd-swipe",
+      sessionId: "session-1",
+      command: {
+        type: "input.swipe",
+        start: {
+          x: 500,
+          y: 400,
+          space: "screen-physical",
+        },
+        end: {
+          x: 420,
+          y: 220,
+          space: "screen-physical",
+        },
+      },
+    });
+    expect(swipe.success).toBe(true);
+
+    const clipboardRead = CommandEnvelopeSchema.safeParse({
+      protocolVersion: PROTOCOL_VERSION,
+      requestId: "cmd-clipboard-read",
+      sessionId: "session-1",
+      command: {
+        type: "clipboard.read",
+      },
+    });
+    expect(clipboardRead.success).toBe(true);
+
+    const clipboardWrite = CommandEnvelopeSchema.safeParse({
+      protocolVersion: PROTOCOL_VERSION,
+      requestId: "cmd-clipboard-write",
+      sessionId: "session-1",
+      command: {
+        type: "clipboard.write",
+        text: "hello clipboard",
+      },
+    });
+    expect(clipboardWrite.success).toBe(true);
+
+    const windowMove = CommandEnvelopeSchema.safeParse({
+      protocolVersion: PROTOCOL_VERSION,
+      requestId: "cmd-window-move",
+      sessionId: "session-1",
+      command: {
+        type: "app.windowMove",
+        windowId: "window-1",
+        point: {
+          x: 120,
+          y: 80,
+          space: "screen-dip",
+        },
+      },
+    });
+    expect(windowMove.success).toBe(true);
+
+    const windowResize = CommandEnvelopeSchema.safeParse({
+      protocolVersion: PROTOCOL_VERSION,
+      requestId: "cmd-window-resize",
+      sessionId: "session-1",
+      command: {
+        type: "app.windowResize",
+        windowId: "window-1",
+        width: 1280,
+        height: 720,
+        space: "screen-dip",
+      },
+    });
+    expect(windowResize.success).toBe(true);
+
+    const windowMinimize = CommandEnvelopeSchema.safeParse({
+      protocolVersion: PROTOCOL_VERSION,
+      requestId: "cmd-window-minimize",
+      sessionId: "session-1",
+      command: {
+        type: "app.windowMinimize",
+        windowId: "window-1",
+      },
+    });
+    expect(windowMinimize.success).toBe(true);
+
+    const windowMaximize = CommandEnvelopeSchema.safeParse({
+      protocolVersion: PROTOCOL_VERSION,
+      requestId: "cmd-window-maximize",
+      sessionId: "session-1",
+      command: {
+        type: "app.windowMaximize",
+        windowId: "window-1",
+      },
+    });
+    expect(windowMaximize.success).toBe(true);
+
+    const windowClose = CommandEnvelopeSchema.safeParse({
+      protocolVersion: PROTOCOL_VERSION,
+      requestId: "cmd-window-close",
+      sessionId: "session-1",
+      command: {
+        type: "app.windowClose",
+        windowId: "window-1",
+      },
+    });
+    expect(windowClose.success).toBe(true);
+  });
+
+  it("rejects invalid drag/clipboard/window lifecycle command envelopes", () => {
+    const invalidDrag = CommandEnvelopeSchema.safeParse({
+      protocolVersion: PROTOCOL_VERSION,
+      requestId: "cmd-drag-invalid",
+      sessionId: "session-1",
+      command: {
+        type: "input.drag",
+        start: {
+          x: 0,
+          y: 0,
+          space: "screen-dip",
+        },
+      },
+    });
+    expect(invalidDrag.success).toBe(false);
+
+    const invalidClipboardWrite = CommandEnvelopeSchema.safeParse({
+      protocolVersion: PROTOCOL_VERSION,
+      requestId: "cmd-clipboard-write-invalid",
+      sessionId: "session-1",
+      command: {
+        type: "clipboard.write",
+        text: 42,
+      },
+    });
+    expect(invalidClipboardWrite.success).toBe(false);
+
+    const invalidWindowResize = CommandEnvelopeSchema.safeParse({
+      protocolVersion: PROTOCOL_VERSION,
+      requestId: "cmd-window-resize-invalid",
+      sessionId: "session-1",
+      command: {
+        type: "app.windowResize",
+        windowId: "window-1",
+        width: 0,
+        height: 720,
+        space: "screen-dip",
+      },
+    });
+    expect(invalidWindowResize.success).toBe(false);
+  });
+
   it("accepts browser command envelopes", () => {
     const navigate = CommandEnvelopeSchema.safeParse({
       protocolVersion: PROTOCOL_VERSION,
@@ -208,5 +377,122 @@ describe("protocol schemas", () => {
       modifiers: ["Alt"],
     });
     expect(scrolled.success).toBe(true);
+  });
+
+  it("accepts drag/swipe, clipboard, and window lifecycle result payloads", () => {
+    const dragged = CommandResultPayloadSchema.safeParse({
+      type: "input.dragged",
+      start: {
+        x: 10,
+        y: 10,
+        space: "screen-dip",
+      },
+      end: {
+        x: 90,
+        y: 140,
+        space: "screen-dip",
+      },
+      button: "left",
+    });
+    expect(dragged.success).toBe(true);
+
+    const swiped = CommandResultPayloadSchema.safeParse({
+      type: "input.swiped",
+      start: {
+        x: 200,
+        y: 300,
+        space: "screen-physical",
+      },
+      end: {
+        x: 140,
+        y: 120,
+        space: "screen-physical",
+      },
+    });
+    expect(swiped.success).toBe(true);
+
+    const clipboardRead = CommandResultPayloadSchema.safeParse({
+      type: "clipboard.read",
+      text: "hello clipboard",
+    });
+    expect(clipboardRead.success).toBe(true);
+
+    const clipboardWritten = CommandResultPayloadSchema.safeParse({
+      type: "clipboard.written",
+      textLength: 15,
+    });
+    expect(clipboardWritten.success).toBe(true);
+
+    const windowMoved = CommandResultPayloadSchema.safeParse({
+      type: "app.windowMoved",
+      windowId: "window-1",
+      bounds: {
+        x: 20,
+        y: 40,
+        width: 1280,
+        height: 720,
+        space: "screen-dip",
+      },
+    });
+    expect(windowMoved.success).toBe(true);
+
+    const windowResized = CommandResultPayloadSchema.safeParse({
+      type: "app.windowResized",
+      windowId: "window-1",
+      bounds: {
+        x: 20,
+        y: 40,
+        width: 1440,
+        height: 900,
+        space: "screen-dip",
+      },
+    });
+    expect(windowResized.success).toBe(true);
+
+    const windowMinimized = CommandResultPayloadSchema.safeParse({
+      type: "app.windowMinimized",
+      windowId: "window-1",
+      minimized: true,
+    });
+    expect(windowMinimized.success).toBe(true);
+
+    const windowMaximized = CommandResultPayloadSchema.safeParse({
+      type: "app.windowMaximized",
+      windowId: "window-1",
+      maximized: true,
+    });
+    expect(windowMaximized.success).toBe(true);
+
+    const windowClosed = CommandResultPayloadSchema.safeParse({
+      type: "app.windowClosed",
+      windowId: "window-1",
+      closed: true,
+    });
+    expect(windowClosed.success).toBe(true);
+  });
+
+  it("rejects invalid drag/clipboard/window lifecycle result payloads", () => {
+    const invalidSwipe = CommandResultPayloadSchema.safeParse({
+      type: "input.swiped",
+      start: {
+        x: 200,
+        y: 300,
+        space: "screen-physical",
+      },
+    });
+    expect(invalidSwipe.success).toBe(false);
+
+    const invalidClipboardWritten = CommandResultPayloadSchema.safeParse({
+      type: "clipboard.written",
+      textLength: -1,
+    });
+    expect(invalidClipboardWritten.success).toBe(false);
+
+    const invalidWindowClosed = CommandResultPayloadSchema.safeParse({
+      type: "app.windowClosed",
+      windowId: "window-1",
+      closed: "yes",
+    });
+    expect(invalidWindowClosed.success).toBe(false);
   });
 });

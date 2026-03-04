@@ -3,12 +3,19 @@
 pub mod command_ids {
     pub const APP_FOCUS_WINDOW: &str = "app.focusWindow";
     pub const APP_LIST_WINDOWS: &str = "app.listWindows";
+    pub const APP_WINDOW_CLOSE: &str = "app.windowClose";
+    pub const APP_WINDOW_MAXIMIZE: &str = "app.windowMaximize";
+    pub const APP_WINDOW_MINIMIZE: &str = "app.windowMinimize";
+    pub const APP_WINDOW_MOVE: &str = "app.windowMove";
+    pub const APP_WINDOW_RESIZE: &str = "app.windowResize";
     pub const BROWSER_CONSOLE: &str = "browser.console";
     pub const BROWSER_NAVIGATE: &str = "browser.navigate";
     pub const BROWSER_PDF: &str = "browser.pdf";
     pub const BROWSER_SNAPSHOT: &str = "browser.snapshot";
     pub const BROWSER_TRACE_START: &str = "browser.trace.start";
     pub const BROWSER_TRACE_STOP: &str = "browser.trace.stop";
+    pub const CLIPBOARD_READ: &str = "clipboard.read";
+    pub const CLIPBOARD_WRITE: &str = "clipboard.write";
     pub const CONTROL_CANCEL: &str = "control.cancel";
     pub const ELEMENT_FIND: &str = "element.find";
     pub const ELEMENT_INVOKE: &str = "element.invoke";
@@ -16,9 +23,11 @@ pub mod command_ids {
     pub const HEALTH_GET_CAPABILITIES: &str = "health.getCapabilities";
     pub const HEALTH_PING: &str = "health.ping";
     pub const INPUT_CLICK: &str = "input.click";
+    pub const INPUT_DRAG: &str = "input.drag";
     pub const INPUT_MOVE_MOUSE: &str = "input.moveMouse";
     pub const INPUT_PRESS_KEY: &str = "input.pressKey";
     pub const INPUT_SCROLL: &str = "input.scroll";
+    pub const INPUT_SWIPE: &str = "input.swipe";
     pub const INPUT_TYPE_TEXT: &str = "input.typeText";
     pub const OBSERVABILITY_GET_METRICS: &str = "observability.getMetrics";
     pub const SCREEN_CAPTURE: &str = "screen.capture";
@@ -26,12 +35,19 @@ pub mod command_ids {
     pub const ALL: &[&str] = &[
         APP_FOCUS_WINDOW,
         APP_LIST_WINDOWS,
+        APP_WINDOW_CLOSE,
+        APP_WINDOW_MAXIMIZE,
+        APP_WINDOW_MINIMIZE,
+        APP_WINDOW_MOVE,
+        APP_WINDOW_RESIZE,
         BROWSER_CONSOLE,
         BROWSER_NAVIGATE,
         BROWSER_PDF,
         BROWSER_SNAPSHOT,
         BROWSER_TRACE_START,
         BROWSER_TRACE_STOP,
+        CLIPBOARD_READ,
+        CLIPBOARD_WRITE,
         CONTROL_CANCEL,
         ELEMENT_FIND,
         ELEMENT_INVOKE,
@@ -39,9 +55,11 @@ pub mod command_ids {
         HEALTH_GET_CAPABILITIES,
         HEALTH_PING,
         INPUT_CLICK,
+        INPUT_DRAG,
         INPUT_MOVE_MOUSE,
         INPUT_PRESS_KEY,
         INPUT_SCROLL,
+        INPUT_SWIPE,
         INPUT_TYPE_TEXT,
         OBSERVABILITY_GET_METRICS,
         SCREEN_CAPTURE,

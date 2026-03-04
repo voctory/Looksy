@@ -7,12 +7,19 @@ public static class ProtocolCommandIds
 {
   public const string AppFocusWindow = "app.focusWindow";
   public const string AppListWindows = "app.listWindows";
+  public const string AppWindowClose = "app.windowClose";
+  public const string AppWindowMaximize = "app.windowMaximize";
+  public const string AppWindowMinimize = "app.windowMinimize";
+  public const string AppWindowMove = "app.windowMove";
+  public const string AppWindowResize = "app.windowResize";
   public const string BrowserConsole = "browser.console";
   public const string BrowserNavigate = "browser.navigate";
   public const string BrowserPdf = "browser.pdf";
   public const string BrowserSnapshot = "browser.snapshot";
   public const string BrowserTraceStart = "browser.trace.start";
   public const string BrowserTraceStop = "browser.trace.stop";
+  public const string ClipboardRead = "clipboard.read";
+  public const string ClipboardWrite = "clipboard.write";
   public const string ControlCancel = "control.cancel";
   public const string ElementFind = "element.find";
   public const string ElementInvoke = "element.invoke";
@@ -20,9 +27,11 @@ public static class ProtocolCommandIds
   public const string HealthGetCapabilities = "health.getCapabilities";
   public const string HealthPing = "health.ping";
   public const string InputClick = "input.click";
+  public const string InputDrag = "input.drag";
   public const string InputMoveMouse = "input.moveMouse";
   public const string InputPressKey = "input.pressKey";
   public const string InputScroll = "input.scroll";
+  public const string InputSwipe = "input.swipe";
   public const string InputTypeText = "input.typeText";
   public const string ObservabilityGetMetrics = "observability.getMetrics";
   public const string ScreenCapture = "screen.capture";
@@ -31,12 +40,19 @@ public static class ProtocolCommandIds
   {
     AppFocusWindow,
     AppListWindows,
+    AppWindowClose,
+    AppWindowMaximize,
+    AppWindowMinimize,
+    AppWindowMove,
+    AppWindowResize,
     BrowserConsole,
     BrowserNavigate,
     BrowserPdf,
     BrowserSnapshot,
     BrowserTraceStart,
     BrowserTraceStop,
+    ClipboardRead,
+    ClipboardWrite,
     ControlCancel,
     ElementFind,
     ElementInvoke,
@@ -44,9 +60,11 @@ public static class ProtocolCommandIds
     HealthGetCapabilities,
     HealthPing,
     InputClick,
+    InputDrag,
     InputMoveMouse,
     InputPressKey,
     InputScroll,
+    InputSwipe,
     InputTypeText,
     ObservabilityGetMetrics,
     ScreenCapture,

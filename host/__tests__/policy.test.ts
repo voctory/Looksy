@@ -148,9 +148,77 @@ function commandForType(type: CommandPayload["type"]): CommandPayload {
           space: "window-client",
         },
       };
+    case "input.drag":
+      return {
+        type,
+        start: {
+          x: 1,
+          y: 2,
+          space: "screen-dip",
+        },
+        end: {
+          x: 5,
+          y: 6,
+          space: "screen-dip",
+        },
+      };
+    case "input.swipe":
+      return {
+        type,
+        start: {
+          x: 1,
+          y: 2,
+          space: "screen-dip",
+        },
+        end: {
+          x: 5,
+          y: 6,
+          space: "screen-dip",
+        },
+      };
+    case "clipboard.read":
+      return { type };
+    case "clipboard.write":
+      return {
+        type,
+        text: "hello",
+      };
     case "app.listWindows":
       return { type };
     case "app.focusWindow":
+      return {
+        type,
+        windowId: "window-1",
+      };
+    case "app.windowMove":
+      return {
+        type,
+        windowId: "window-1",
+        point: {
+          x: 100,
+          y: 120,
+          space: "screen-dip",
+        },
+      };
+    case "app.windowResize":
+      return {
+        type,
+        windowId: "window-1",
+        width: 1280,
+        height: 720,
+        space: "screen-dip",
+      };
+    case "app.windowMinimize":
+      return {
+        type,
+        windowId: "window-1",
+      };
+    case "app.windowMaximize":
+      return {
+        type,
+        windowId: "window-1",
+      };
+    case "app.windowClose":
       return {
         type,
         windowId: "window-1",
