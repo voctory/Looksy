@@ -9,6 +9,7 @@ This audit tracks practical parity across:
 - Looksy protocol + host runtime
 - OpenClaw browser/computer Looksy routing
 - Trope browser/computer Looksy routing
+- Integration baselines checked for this refresh: OpenClaw `3c9067257`, Trope `5cb3808`
 
 ## Implemented State Snapshot (March 4, 2026)
 
@@ -27,27 +28,16 @@ This audit tracks practical parity across:
   - Evidence: `host/adapters/windows.ts`, `host/__tests__/windows.automation.test.ts`
 - [x] OpenClaw Looksy routing now includes `/tabs/open` and `/tabs/action` list/select in addition to existing routes.
   - Evidence: `../openclaw/src/gateway/server-methods/browser.ts`, `../openclaw/src/gateway/server-methods/browser.looksy-routing.test.ts`
-- [x] Trope Looksy mapper now includes `list_windows`, `focus_window`, and `activate_tab`.
+- [x] OpenClaw now routes screenshot clipping via `screen.capture` + `region`, and maps `act:scroll` -> `input.scroll`.
+  - Evidence: `../openclaw/src/gateway/server-methods/browser.ts`, `../openclaw/src/gateway/server-methods/browser.looksy-routing.test.ts`
+- [x] Trope Looksy mapper now includes `list_windows`, `focus_window`, `activate_tab`, drag/swipe/clipboard mappings, and `window_close` alias routing to `app.windowClose`.
   - Evidence: `../trope/packages/rust/trope-daemon/src/tools/mod.rs`
 
 ## Remaining Gaps
 
 ## Critical
 
-### 1. OpenClaw clipped screenshot command mismatch
-
-Impact:
-
-- OpenClaw region/clip translation emits `screen.capture.region`.
-- Looksy protocol command IDs include `screen.capture` only.
-
-Evidence:
-
-- `../openclaw/src/gateway/server-methods/browser.ts`
-- `../openclaw/src/gateway/server-methods/browser.looksy-routing.test.ts`
-- `protocol/generated/v1/identifiers.json`
-
-### 2. OpenClaw parity-gap guards still block newly-added command families
+### 1. OpenClaw parity-gap guards still block newly-added command families
 
 Impact:
 
@@ -60,18 +50,17 @@ Evidence:
 - `protocol/schema.ts`
 - `host/adapters/windows.ts`
 
-### 3. Trope Looksy mapper remains partial for newly-added and browser-state families
+### 2. Trope Looksy mapper remains partial for browser-state families
 
 Impact:
 
-- Trope still rejects drag/swipe/clipboard looksy mappings.
 - Trope still has no `browser.pdf` / `browser.console` Looksy mapper paths.
 
 Evidence:
 
 - `../trope/packages/rust/trope-daemon/src/tools/mod.rs`
 
-### 4. Browser-state runtime/backend parity remains partial
+### 3. Browser-state runtime/backend parity remains partial
 
 Impact:
 
@@ -83,7 +72,7 @@ Evidence:
 - `host/adapters/windows.ts`
 - `../trope/apps/windows/WindowsAgent/Program.cs`
 
-### 5. Element family parity is still incomplete
+### 4. Element family parity is still incomplete
 
 Impact:
 
@@ -98,11 +87,12 @@ Evidence:
 
 ## High
 
-### 6. Window lifecycle commands are not yet routed through OpenClaw/Trope
+### 5. Window lifecycle commands are only partially routed through OpenClaw/Trope
 
 Impact:
 
-- `app.windowMove`/`Resize`/`Minimize`/`Maximize`/`Close` exist in protocol + Windows backend, but integrations do not map them.
+- OpenClaw does not map `app.window*`.
+- Trope maps close (`app.windowClose`) but not move/resize/minimize/maximize.
 
 Evidence:
 
@@ -111,7 +101,7 @@ Evidence:
 - `../openclaw/src/gateway/server-methods/browser.ts`
 - `../trope/packages/rust/trope-daemon/src/tools/mod.rs`
 
-### 7. App launch/quit command family is still undefined
+### 6. App launch/quit command family is still undefined
 
 Impact:
 
@@ -121,7 +111,7 @@ Evidence:
 
 - `protocol/generated/v1/identifiers.json`
 
-### 8. Target-scoped browser semantics remain constrained
+### 7. Target-scoped browser semantics remain constrained
 
 Impact:
 
@@ -133,22 +123,21 @@ Evidence:
 - `../openclaw/src/gateway/server-methods/browser.looksy-routing.test.ts`
 - `../trope/packages/rust/trope-daemon/src/tools/mod.rs`
 
-### 9. SDK wrapper surface still lags protocol primitive surface
+### 8. SDK wrapper surface still lags protocol primitive surface
 
 Evidence:
 
 - `client/csharp/Looksy.Client/LooksyClient.cs`
 - `client/rust/src/client.rs`
 
-### 10. Cross-consumer parity assertions remain narrow on long-tail permutations
+### 9. Cross-consumer parity assertions remain narrow on long-tail permutations
 
 ## Prioritized Backlog
 
 ## P0 (practical superset blockers)
 
-- [ ] Align OpenClaw clipped screenshot translation with Looksy `screen.capture` contract.
 - [ ] Replace OpenClaw `act:drag`/`act:swipe`/clipboard parity-gap guards with actual Looksy command routing.
-- [ ] Add Trope Looksy mappings for drag/swipe/clipboard and browser pdf/console.
+- [ ] Add Trope Looksy mappings for browser pdf/console.
 - [ ] Replace simulated Looksy Windows browser-state backend behavior with real backend execution.
 - [ ] Route element command family through OpenClaw/Trope Looksy paths and harden UIA-first execution.
 
