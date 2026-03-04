@@ -1,6 +1,6 @@
 # Looksy Superset Gap Audit and Prioritized Backlog
 
-Last updated: March 3, 2026
+Last updated: March 4, 2026
 
 ## Scope
 
@@ -9,12 +9,20 @@ This audit tracks practical parity for:
 - OpenClaw browser/computer integration routing
 - Trope browser/computer integration routing
 
-## Implemented State Snapshot (March 3, 2026)
+## Implemented State Snapshot (March 4, 2026)
+
+### Directional scope gate (March 2026)
+
+- Active rollout direction is **OS-input-first**.
+- Browser-driver/state-heavy families are treated as deferred scope for this rollout wave.
+- Source-of-truth scope + validation commands: `docs/os-input-surface.md`.
 
 ### Closed in this wave
 
 - [x] OpenClaw browser entrypoint routes to Looksy behind feature flags and emits route metadata.
   - Evidence: `../openclaw/src/gateway/server-methods/browser.ts`, `../openclaw/src/gateway/server-methods/browser.looksy-routing.test.ts`
+- [x] Routing flags now include `LOOKSY_OS_INPUT_ONLY` in OpenClaw and Trope for explicit OS-input-first gating.
+  - Evidence: `../openclaw/src/gateway/server-methods/browser.ts`, `../trope/packages/rust/trope-daemon/src/tools/mod.rs`
 - [x] Trope browser mapping expanded for Looksy (`screenshot`, `click`, `hover`, `type_text`, `press_key`, `navigate`, `snapshot` family, `scroll`, trace start/stop) with fallback/error matrix coverage.
   - Evidence: `../trope/packages/rust/trope-daemon/src/tools/mod.rs`
 - [x] Protocol primitives expanded and validated (`input.pressKey`, `input.scroll`, browser family, element family, metrics, cancel, artifact retrieval metadata).
@@ -35,10 +43,10 @@ Evidence:
 - `host/adapters/macos.ts`
 - `host/adapters/windows.ts`
 
-### 2. OpenClaw Looksy translation still has argument-surface gaps
+### 2. Browser-driver/state parity remains intentionally deferred in current rollout scope
 
 Impact:
-- Core parity routes are now translated, but advanced/target-scoped semantics still rely on fallback or return unsupported.
+- Core parity routes are translated, but advanced/target-scoped semantics are intentionally gated out of OS-input-first rollout and should stay on legacy execution where parity is unproven.
 
 Current constrained translation paths include:
 - `/navigate` (no `targetId`)
@@ -86,7 +94,7 @@ Evidence:
 ## P0 (practical superset blockers)
 
 - [ ] Replace simulated adapters with real macOS and Windows automation backends.
-- [ ] Expand OpenClaw argument-surface compatibility for translated browser routes.
+- [ ] Close browser-driver/state runtime parity for translated OpenClaw routes before broad default-on.
 - [ ] Expand Trope Windows `automation.browser` implementation beyond input/screenshot subset.
 
 ## P1 (integration quality and developer ergonomics)

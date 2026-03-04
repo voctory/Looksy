@@ -12,6 +12,7 @@ Define these toggles in the consumer app:
 | `LOOKSY_ENABLE_LEGACY_ACTION_COMPAT` | `false` | Enables TS client-side legacy action name mapping to protocol v1 command names. |
 | `LOOKSY_FORCE_LEGACY_EXECUTION` | `false` | Emergency rollback toggle to force legacy execution path even when integration is enabled. |
 | `LOOKSY_FALLBACK_TO_LEGACY_ON_ERROR` | `false` | Optional automatic fallback to legacy when Looksy execution throws (transport/runtime failure path). |
+| `LOOKSY_OS_INPUT_ONLY` | `false` | Consumer-side safety gate that routes only OS-input-safe actions through Looksy and leaves browser-driver/state actions on legacy paths. |
 
 ## 2. Command Name Baseline (Protocol v1)
 
@@ -77,18 +78,21 @@ export async function runAutomation(command: AutomationCommand, context: Automat
 1. Deploy with `LOOKSY_INTEGRATION_ENABLED=false`.
 2. Enable `LOOKSY_ENABLE_LEGACY_ACTION_COMPAT=true` for migration cohorts still emitting legacy action names.
 3. Enable `LOOKSY_INTEGRATION_ENABLED=true` for internal dogfood users only.
-4. Keep `LOOKSY_FALLBACK_TO_LEGACY_ON_ERROR=true` only for initial rollout waves if automatic fallback is required.
-5. Expand rollout by cohort while monitoring success/error rate and p95 latency.
-6. Disable `LOOKSY_ENABLE_LEGACY_ACTION_COMPAT` after consumers send protocol v1 command names natively.
-7. Disable `LOOKSY_FALLBACK_TO_LEGACY_ON_ERROR` after host stability targets are met.
+4. Enable `LOOKSY_OS_INPUT_ONLY=true` for OS-input-first rollout waves.
+5. Keep `LOOKSY_FALLBACK_TO_LEGACY_ON_ERROR=true` only for initial rollout waves if automatic fallback is required.
+6. Expand rollout by cohort while monitoring success/error rate and p95 latency.
+7. Disable `LOOKSY_ENABLE_LEGACY_ACTION_COMPAT` after consumers send protocol v1 command names natively.
+8. Disable `LOOKSY_FALLBACK_TO_LEGACY_ON_ERROR` only after stability targets are met.
+9. Disable `LOOKSY_OS_INPUT_ONLY` only after browser-driver/state parity is explicitly validated.
 
 ## 5. Rollback Procedure
 
 1. Set `LOOKSY_FORCE_LEGACY_EXECUTION=true`.
 2. If needed, set `LOOKSY_INTEGRATION_ENABLED=false`.
 3. Keep or set `LOOKSY_FALLBACK_TO_LEGACY_ON_ERROR=true` while triaging Looksy failures.
-4. Re-run smoke checks: handshake + `health.ping` + `screen.capture`.
-5. Capture incident summary with failing command type, error code, and timestamp.
+4. Keep `LOOKSY_OS_INPUT_ONLY=true` until browser-driver/state parity is re-validated.
+5. Re-run smoke checks: handshake + `health.ping` + `screen.capture`.
+6. Capture incident summary with failing command type, error code, and timestamp.
 
 ## 6. Acceptance Checklist
 
@@ -96,5 +100,6 @@ export async function runAutomation(command: AutomationCommand, context: Automat
 - [ ] Rollback path can be turned on without redeploying code.
 - [ ] Legacy action compatibility can be toggled independently of integration toggle.
 - [ ] Automatic fallback toggle can be enabled/disabled independently (`LOOKSY_FALLBACK_TO_LEGACY_ON_ERROR`).
+- [ ] OS-input-first scope can be toggled independently (`LOOKSY_OS_INPUT_ONLY`) in consumers that implement this gate.
 - [ ] Telemetry tags include integration path (`looksy` vs `legacy`) and command type.
 - [ ] Runbook is linked from release docs and owned by on-call.

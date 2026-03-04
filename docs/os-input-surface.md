@@ -1,46 +1,103 @@
-# OS Input Surface (Current Scope)
+# OS-Input-First Execution Scope (Source of Truth)
 
 Last updated: March 4, 2026
 
-This document defines the current protocol and host support for OS-level input primitives used by active consumer integrations.
+This is the source-of-truth scope for current rollout work (phases 9-14 readiness): integrations are **OS-input-first** and must keep browser-driver/state-heavy actions on legacy execution unless explicitly validated.
 
-## Supported Commands
+## Directional Decision (March 2026)
 
-These commands are part of `protocol/schema.ts`, simulated host adapters, and covered by tests.
+- Route only stable OS-input primitives through Looksy by default.
+- Keep browser-driver/state actions (navigation/snapshot/pdf/console/trace and rich target-scoped semantics) on legacy execution during this rollout wave.
+- Use feature flags to allow safe canarying and immediate rollback without redeploy.
 
-1. `input.moveMouse`
-   - Request: `point { x, y, space }`
-   - Result: `input.mouseMoved` with echoed `point`
-2. `input.click`
-   - Request: `button`, optional `point`
-   - Result: `input.clicked` with `button` and optional `point`
-3. `input.typeText`
-   - Request: `text`
-   - Result: `input.typed` with `textLength`
-4. `input.pressKey`
-   - Request: `key`, optional `modifiers[]`, optional `repeat`
-   - Result: `input.keyPressed` with `key`, optional `modifiers[]`, and normalized `repeat` (`1` when omitted)
-5. `input.scroll`
-   - Request: `dx`, `dy`, optional `point`, optional `modifiers[]`
-   - Result: `input.scrolled` with echoed values
+Evidence:
+- `protocol/schema.ts`
+- `host/__tests__/core.test.ts`
+- `../openclaw/src/gateway/server-methods/browser.ts`
+- `../trope/packages/rust/trope-daemon/src/tools/mod.rs`
 
-## Consumer Mapping Scope
+## Supported Actions Now
 
-Current integration routes are expected to map:
+### Protocol + host envelope primitives
 
-- `click` -> `input.click`
-- `hover` -> `input.moveMouse`
-- `type_text` -> `input.typeText`
-- `press_key` -> `input.pressKey`
-- `scroll` -> `input.scroll`
+- `screen.capture` (desktop-style capture)
+- `input.moveMouse`
+- `input.click`
+- `input.typeText`
+- `input.pressKey`
+- `input.scroll`
 
-## Explicit Non-Goals (For Now)
+### Consumer mapping surface currently intended for rollout
 
-The following are intentionally not part of the current input surface:
+- OpenClaw `/act` subsets:
+  - `click` (point-based, no selector/ref target semantics)
+  - `hover` (point-based)
+  - `type` (direct text)
+  - `press` (key/chord + optional modifiers)
+- OpenClaw `/screenshot` desktop capture subset (no `targetId`/`ref`/`element`/`fullPage`)
+- Trope browser action subset:
+  - `screenshot`, `click`, `hover`, `type_text`, `press_key`, `scroll`
 
-- Dedicated down/up primitives (`input.mouseDown`, `input.mouseUp`)
-- Drag lifecycle primitives in protocol (down -> move -> up orchestration)
-- Key hold duration semantics
-- Rich keyboard layout abstraction beyond raw `key` + optional `modifiers`
+Evidence:
+- `../openclaw/src/gateway/server-methods/browser.looksy-routing.test.ts`
+- `../trope/packages/rust/trope-daemon/src/tools/mod.rs`
 
-Consumers requiring these semantics should continue to use existing fallback behavior until a dedicated protocol extension lands.
+## Deferred Actions (Not In OS-Input-First Rollout Scope)
+
+- Browser-driver/state families:
+  - `browser.navigate`
+  - `browser.snapshot`
+  - `browser.pdf`
+  - `browser.console`
+  - `browser.trace.start`
+  - `browser.trace.stop`
+- Target-scoped/browser-state semantics (`targetId`, `ref`, `selector`, `element`) beyond currently translated point/text/key subsets.
+- Rich browser lifecycle/state parity work needed for practical superset claim.
+
+## Rollout Toggles
+
+| Flag | Purpose | Typical OS-input-first value |
+| --- | --- | --- |
+| `LOOKSY_INTEGRATION_ENABLED` | Enables Looksy routing path. | `true` in canary, `false` by default in broad rollout until ready |
+| `LOOKSY_FORCE_LEGACY_EXECUTION` | Emergency hard rollback. | `false` |
+| `LOOKSY_FALLBACK_TO_LEGACY_ON_ERROR` | Auto-fallback when Looksy route fails. | `true` during early canary |
+| `LOOKSY_OS_INPUT_ONLY` | Restricts routing to OS-input-safe subset. | `true` |
+
+Code references:
+- OpenClaw: `../openclaw/src/gateway/server-methods/browser.ts` (`resolveLooksyRoutingFlags`, `browserHandlers["browser.request"]`)
+- Trope: `../trope/packages/rust/trope-daemon/src/tools/mod.rs` (`looksy_routing_flags_from_reader`, `execute_browser_command_with_routing`)
+
+## Validation Commands
+
+```bash
+# Looksy protocol/host baseline
+npm run typecheck
+npm test -- protocol/schema.test.ts host/__tests__/core.test.ts
+
+# OpenClaw routing + fallback metadata matrix
+pnpm vitest run src/gateway/server-methods/browser.looksy-routing.test.ts
+
+# Trope mapper + routing matrix
+cargo test -p trope-daemon map_browser_action_to_looksy_
+cargo test -p trope-daemon execute_browser_command_with_routing_
+```
+
+## Rollout Baseline Matrix
+
+```bash
+# Legacy baseline
+LOOKSY_INTEGRATION_ENABLED=false
+
+# Canary: Looksy enabled, OS-input-first, with safety fallback
+LOOKSY_INTEGRATION_ENABLED=true
+LOOKSY_OS_INPUT_ONLY=true
+LOOKSY_FALLBACK_TO_LEGACY_ON_ERROR=true
+
+# Strict failure surfacing for verification environments
+LOOKSY_INTEGRATION_ENABLED=true
+LOOKSY_OS_INPUT_ONLY=true
+LOOKSY_FALLBACK_TO_LEGACY_ON_ERROR=false
+
+# Emergency rollback
+LOOKSY_FORCE_LEGACY_EXECUTION=true
+```

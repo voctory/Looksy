@@ -1,17 +1,23 @@
-# Superset Gap Remediation Plan (Updated March 3, 2026)
+# Superset Gap Remediation Plan (Updated March 4, 2026)
 
 This plan tracks what remains before Looksy can be treated as a practical superset for consumer browser/computer automation paths.
 
-## Current Assessment (March 3, 2026)
+## Current Assessment (March 4, 2026)
 
 Status: **not yet a superset**, but this wave moved key integration paths from design-only to partially routed production code.
+
+## Directional Decision (March 2026)
+
+- Phase 9-14 rollout work is now **OS-input-first**.
+- Browser-driver/state-heavy actions remain intentionally deferred to legacy execution paths until backend/runtime parity is proven.
+- Source-of-truth rollout scope: `docs/os-input-surface.md`.
 
 ## Implemented in This Wave (Evidence-Based)
 
 ### 1. OpenClaw browser entrypoint now supports feature-flagged Looksy routing
 
 Delivered behavior:
-- `LOOKSY_INTEGRATION_ENABLED`, `LOOKSY_FORCE_LEGACY_EXECUTION`, `LOOKSY_FALLBACK_TO_LEGACY_ON_ERROR` govern routing.
+- `LOOKSY_INTEGRATION_ENABLED`, `LOOKSY_FORCE_LEGACY_EXECUTION`, `LOOKSY_FALLBACK_TO_LEGACY_ON_ERROR`, `LOOKSY_OS_INPUT_ONLY` govern routing.
 - Successful responses include route metadata: `looksy`, `legacy`, `legacy-fallback`.
 - Unsupported/translation-limited operations are surfaced as typed errors or fallback to legacy (based on flag).
 
@@ -75,8 +81,8 @@ Evidence:
 1. Real backend gap: adapters are still simulated, not real OS/browser automation backends.
 - Evidence: `host/adapters/macos.ts`, `host/adapters/windows.ts` (simulated behavior and synthetic payload generation).
 
-2. Consumer translation coverage remains partial.
-- OpenClaw now routes `/navigate`, `/snapshot`, `/pdf`, `/console`, `/trace/start`, `/trace/stop` through Looksy, but still falls back for target-scoped and advanced parity arguments (for example selector/ref-targeted flows, `snapshot` aria/labels/depth modes, and custom trace/pdf output path controls).
+2. Browser-driver/state parity remains deferred by design for OS-input-first rollout.
+- OpenClaw has translation branches for `/navigate`, `/snapshot`, `/pdf`, `/console`, `/trace/start`, `/trace/stop`, but these remain outside OS-input-first rollout scope and should stay on legacy execution where parity is not yet proven.
 - Evidence: `../openclaw/src/gateway/server-methods/browser.ts` translation branches + routing tests.
 
 3. Trope Windows runtime browser support remains partial.
@@ -92,6 +98,13 @@ Evidence:
   - `client/rust/src/client.rs`
 
 5. Parity tests are still concentrated on limited routed paths; broader cross-consumer contract tests are pending.
+
+## Validation + Rollout Toggle Reference
+
+- Validation commands and rollout flag matrix are maintained in `docs/os-input-surface.md`.
+- Consumer routing flag evidence:
+  - OpenClaw: `../openclaw/src/gateway/server-methods/browser.ts`
+  - Trope: `../trope/packages/rust/trope-daemon/src/tools/mod.rs`
 
 ## Updated Execution Order
 
