@@ -8,6 +8,7 @@
     "protocol:generate": "npm run build && node dist/scripts/generateProtocolArtifacts.js",
     "protocol:check": "npm run build && node dist/scripts/generateProtocolArtifacts.js --check",
     "test": "vitest run",
+    "smoke:windows-os-input": "node scripts/runWindowsRealOsInputSmoke.cjs",
     "smoke:windows-screenshot": "node scripts/runWindowsRealScreenshotSmoke.cjs",
     "host:start": "npm run build && node dist/host/serverMain.js"
   },

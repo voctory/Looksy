@@ -33,6 +33,17 @@ Behavior:
 - On Windows: captures a real desktop PNG via OS APIs and fails if output looks synthetic.
 - On non-Windows: exits successfully without attempting capture.
 
+### Windows real OS-input/window smoke check (local)
+
+```bash
+npm run smoke:windows-os-input
+```
+
+Behavior:
+- On Windows: validates protocol success envelopes for handshake, `app.listWindows`, optional `app.focusWindow` of the first enumerated window, and `input.moveMouse`.
+- Safety: no click, no keypress, no text input. This smoke only lists windows, optionally focuses one, and moves the pointer.
+- On non-Windows: exits successfully without attempting OS input/window automation.
+
 ## 4. Start Local Host Runtime
 
 Default runtime starts with the macOS adapter on loopback:
