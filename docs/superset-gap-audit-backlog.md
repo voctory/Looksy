@@ -16,6 +16,7 @@ This audit tracks practical parity for:
 - Active rollout direction is **OS-input-first**.
 - Browser-driver/state-heavy families are treated as deferred scope for this rollout wave.
 - Source-of-truth scope + validation commands: `docs/os-input-surface.md`.
+- Source-of-truth capability parity matrix: `docs/peekaboo-parity-matrix-mar-2026.md`.
 
 ### Closed in this wave
 
@@ -34,31 +35,27 @@ This audit tracks practical parity for:
 
 ## Critical
 
-### 1. Real adapter/backend parity is still partial
+### 1. OpenClaw clipped screenshot command-type divergence
 
 Impact:
-- Windows host now executes real OS-backed `screen.capture`, `input.*`, and `app.listWindows` / `app.focusWindow`.
-- macOS adapter and browser/element families remain simulated, so parity is still incomplete for practical superset claims.
+- OpenClaw region/clip translation emits `screen.capture.region`.
+- Looksy protocol command identifiers include `screen.capture` and do not include `screen.capture.region`.
 
 Evidence:
-- `host/adapters/macos.ts`
-- `host/adapters/windows.ts`
-
-### 2. Browser-driver/state parity remains intentionally deferred in current rollout scope
-
-Impact:
-- Core parity routes are translated, but advanced/target-scoped semantics are intentionally gated out of OS-input-first rollout and should stay on legacy execution where parity is unproven.
-
-Current constrained translation paths include:
-- `/navigate` (no `targetId`)
-- `/snapshot` (no aria/labels/depth/selector/frame modes)
-- `/pdf` (no `targetId`/custom output path)
-- `/console` (no `targetId`)
-- `/trace/start` and `/trace/stop` (no advanced target/path controls)
-
-Evidence:
-- `../openclaw/src/gateway/server-methods/browser.ts` (`translateBrowserRequestToLooksy`)
+- `../openclaw/src/gateway/server-methods/browser.ts`
 - `../openclaw/src/gateway/server-methods/browser.looksy-routing.test.ts`
+- `protocol/schema.ts`
+- `protocol/generated/v1/identifiers.json`
+
+### 2. Browser-state backend parity remains partial
+
+Impact:
+- Browser command family is protocol-defined (`navigate`, `snapshot`, `pdf`, `console`, `trace`), but Windows adapter behavior is still simulated/in-memory for these flows.
+
+Evidence:
+- `protocol/schema.ts`
+- `host/adapters/windows.ts`
+- `host/adapters/macos.ts`
 
 ### 3. Trope Windows browser runtime remains partial
 
@@ -70,9 +67,50 @@ Evidence:
 - `../trope/apps/windows/WindowsAgent/Program.cs` (default capabilities and extension handling)
 - `../trope/docs/WINDOWS_AUTOMATION_LOOKSY_CAPABILITY_MATRIX_MAR_2026.md`
 
+### 4. Element family parity is not practical yet
+
+Impact:
+- Looksy protocol includes `element.find`, `element.invoke`, and `element.setValue`, but Windows adapter uses simulated element state.
+- OpenClaw and Trope Looksy browser mapping paths do not map element command families.
+
+Evidence:
+- `protocol/schema.ts`
+- `host/adapters/windows.ts`
+- `../openclaw/src/gateway/server-methods/browser.ts`
+- `../trope/packages/rust/trope-daemon/src/tools/mod.rs`
+
+### 5. Drag/swipe gesture family is absent end-to-end
+
+Impact:
+- Looksy has no `input.drag`/`input.swipe` command IDs.
+- OpenClaw and Trope do not expose Looksy drag/swipe mapping paths.
+
+Evidence:
+- `protocol/generated/v1/identifiers.json`
+- `../openclaw/src/gateway/server-methods/browser.ts`
+- `../trope/packages/rust/trope-daemon/src/tools/mod.rs`
+
 ## High
 
-### 4. SDK wrapper surface lags protocol primitive surface
+### 6. Target-scoped semantics remain constrained in consumer mappings
+
+Impact:
+- OpenClaw and Trope both reject target/ref/selector-heavy variants on translated routes/actions, limiting parity for complex browser control.
+
+Evidence:
+- `../openclaw/src/gateway/server-methods/browser.ts`
+- `../openclaw/src/gateway/server-methods/browser.looksy-routing.test.ts`
+- `../trope/packages/rust/trope-daemon/src/tools/mod.rs`
+
+### 7. Missing command families beyond current OS-input scope
+
+Impact:
+- Clipboard and broader window lifecycle/app controls are not represented in current Looksy command identifiers.
+
+Evidence:
+- `protocol/generated/v1/identifiers.json`
+
+### 8. SDK wrapper surface lags protocol primitive surface
 
 Impact:
 - C#/Rust users can call generic command APIs, but convenience wrappers for expanded primitives are incomplete.
@@ -81,7 +119,7 @@ Evidence:
 - `client/csharp/Looksy.Client/LooksyClient.cs`
 - `client/rust/src/client.rs`
 
-### 5. Cross-consumer parity assertions are still narrow
+### 9. Cross-consumer parity assertions are still narrow
 
 Impact:
 - Route-level compatibility confidence remains strongest for covered paths, weaker for long-tail browser actions.
@@ -94,12 +132,16 @@ Evidence:
 
 ## P0 (practical superset blockers)
 
-- [ ] Replace remaining simulated adapters with real macOS and browser/element automation backends.
-- [ ] Close browser-driver/state runtime parity for translated OpenClaw routes before broad default-on.
-- [ ] Expand Trope Windows `automation.browser` implementation beyond input/screenshot subset.
+- [ ] Align OpenClaw clipped screenshot translation with Looksy `screen.capture` command contract.
+- [ ] Replace simulated browser-state adapter behavior with real backend execution.
+- [ ] Expand Trope Windows `automation.browser` support for mapped non-OS-input browser actions.
+- [ ] Replace simulated Looksy element backend with real implementation and add consumer mappings.
+- [ ] Add `input.drag` and `input.swipe` across protocol, backend, and consumer mappings.
 
 ## P1 (integration quality and developer ergonomics)
 
+- [ ] Expand target-scoped semantics (target/ref/selector/frame modes) in mapped consumer routes/actions.
+- [ ] Add clipboard and broader window lifecycle/app control command families.
 - [ ] Add C#/Rust wrapper methods for newly-added primitives (`input.pressKey`, `input.scroll`, browser and element families, metrics).
 - [ ] Add cross-consumer regression matrix for routed behavior and error envelopes.
 - [ ] Add explicit telemetry dimensions for routed path (`looksy` vs `legacy` vs `legacy-fallback`) in downstream rollout dashboards.
@@ -111,6 +153,6 @@ Evidence:
 ## Exit Criteria
 
 Looksy should be considered a practical superset replacement only when:
-1. P0 items above are completed and validated in staging with real backends.
+1. P0 items above are completed and validated in staging with real backends and aligned command contracts.
 2. Consumer integrations can run parity-critical browser/computer actions default-on without forced legacy fallback for core workflows.
 3. Regression and conformance suites cover both success and denial/error paths across Looksy, OpenClaw, and Trope surfaces.

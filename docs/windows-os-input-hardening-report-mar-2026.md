@@ -178,24 +178,27 @@ From the consumer gateway side, verify:
 
 ## Known Gaps vs Peekaboo-Style Breadth
 
-This Windows wave closes core OS-input/window fundamentals, but practical parity gaps remain:
+Canonical source of truth for gap status is now:
 
-1. Rich capture/vision workflows (`capture`/`image`/`see` with analysis and annotation pipelines).
-2. Gesture primitives (`drag`, `swipe`) not yet present as protocol commands.
-3. Broader system controls (window lifecycle ops, app launch/quit, menu/dialog/space/dock families).
-4. Real Windows element backend (current element family in Windows adapter remains simulated).
-5. Clipboard/paste command families not yet present in protocol/host.
-6. Browser-state families remain intentionally deferred and should stay on legacy execution until real parity exists.
+- `docs/peekaboo-parity-matrix-mar-2026.md`
 
-Reference for this gap framing:
+Current P0 blockers from that matrix:
+
+1. Clipped screenshot command-type divergence in OpenClaw mapping (`screen.capture.region`) versus Looksy protocol command list (`screen.capture` only).
+2. Browser-state command families (`browser.navigate`, `browser.snapshot`, `browser.pdf`, `browser.console`, `browser.trace.*`) remain simulated in Looksy Windows adapter.
+3. Trope Windows runtime `automation.browser` still executes an OS-input/screenshot subset and returns `unsupported_method` for non-covered browser actions.
+4. Looksy element command family is protocol-defined but still simulated in Windows adapter and not mapped in OpenClaw/Trope Looksy paths.
+5. Gesture primitives (`drag`, `swipe`) are absent from protocol + Windows backend + current consumer mappings.
+
+Related planning docs:
 
 - `docs/superset-gap-remediation-plan.md`
 - `docs/superset-gap-audit-backlog.md`
 
 ## Recommended Next Sequence
 
-1. Implement real UIA-backed Windows element operations (`element.find`, `element.invoke`, `element.setValue`).
-2. Add `input.drag` and `input.swipe` protocol + adapter implementations.
-3. Add window lifecycle command family (`move/resize/minimize/maximize/close`) with policy gating.
-4. Add clipboard command family and explicit paste workflow.
-5. Expand cross-consumer parity regression matrix for all routed OS-input actions and typed error envelopes.
+1. P0: Resolve OpenClaw clipped screenshot command mismatch to align with Looksy `screen.capture` command contract.
+2. P0: Replace simulated Windows browser-state handlers with real backend execution semantics.
+3. P0: Implement real UIA-backed Looksy element operations (`element.find`, `element.invoke`, `element.setValue`) and wire consumer mappings.
+4. P0: Add `input.drag` and `input.swipe` protocol + backend + consumer mappings.
+5. P1: Add clipboard and broader window lifecycle command families, then expand cross-consumer parity regression coverage.
