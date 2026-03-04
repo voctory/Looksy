@@ -46,3 +46,7 @@
 - Unit tests in `protocol/` and `host/` validate schema and host behavior.
 - Fixture-driven conformance tests run the same matrix on macOS and Windows adapters.
 - Regression checks enforce coverage for auth, policy, timeout, and cancel paths.
+
+## Active Trackers
+
+- Windows real browser backend implementation tracker: `docs/windows-real-browser-backend-implementation-tracker-mar-2026.md`
