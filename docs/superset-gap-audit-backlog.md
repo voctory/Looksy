@@ -15,7 +15,7 @@ This audit tracks practical parity for:
 
 - [x] OpenClaw browser entrypoint routes to Looksy behind feature flags and emits route metadata.
   - Evidence: `../openclaw/src/gateway/server-methods/browser.ts`, `../openclaw/src/gateway/server-methods/browser.looksy-routing.test.ts`
-- [x] Trope browser mapping expanded for Looksy (`screenshot`, `click`, `hover`, `type_text`, constrained `press_key`) with fallback/error matrix coverage.
+- [x] Trope browser mapping expanded for Looksy (`screenshot`, `click`, `hover`, `type_text`, `press_key`, `navigate`, `snapshot` family, `scroll`, trace start/stop) with fallback/error matrix coverage.
   - Evidence: `../trope/packages/rust/trope-daemon/src/tools/mod.rs`
 - [x] Protocol primitives expanded and validated (`input.pressKey`, `input.scroll`, browser family, element family, metrics, cancel, artifact retrieval metadata).
   - Evidence: `protocol/schema.ts`, `protocol/schema.test.ts`, `host/__tests__/core.test.ts`, `host/httpServer.ts`
@@ -35,22 +35,26 @@ Evidence:
 - `host/adapters/macos.ts`
 - `host/adapters/windows.ts`
 
-### 2. OpenClaw Looksy translation still covers only a subset of browser routes
+### 2. OpenClaw Looksy translation still has argument-surface gaps
 
 Impact:
-- Many browser parity operations continue to rely on fallback or return unsupported.
+- Core parity routes are now translated, but advanced/target-scoped semantics still rely on fallback or return unsupported.
 
-Current unsupported translation paths include:
-- `/navigate`, `/snapshot`, `/pdf`, `/console`, `/trace/start`, `/trace/stop`
+Current constrained translation paths include:
+- `/navigate` (no `targetId`)
+- `/snapshot` (no aria/labels/depth/selector/frame modes)
+- `/pdf` (no `targetId`/custom output path)
+- `/console` (no `targetId`)
+- `/trace/start` and `/trace/stop` (no advanced target/path controls)
 
 Evidence:
 - `../openclaw/src/gateway/server-methods/browser.ts` (`translateBrowserRequestToLooksy`)
 - `../openclaw/src/gateway/server-methods/browser.looksy-routing.test.ts`
 
-### 3. Trope Windows execution path still blocks browser capability end-to-end
+### 3. Trope Windows browser runtime remains partial
 
 Impact:
-- Looksy/Trope browser mapping exists in daemon, but Windows runtime capability exposure blocks execution.
+- Windows runtime now exposes `automation.browser`, but only an input/screenshot subset is implemented; browser state/trace/pdf/console flows remain unsupported.
 
 Evidence:
 - `../trope/packages/rust/trope-daemon/src/tools/mod.rs` (browser routes use `automation.browser`)
@@ -74,16 +78,16 @@ Impact:
 - Route-level compatibility confidence remains strongest for covered paths, weaker for long-tail browser actions.
 
 Evidence:
-- OpenClaw routing tests cover key matrix paths but not all browser semantics.
-- Trope mapping tests cover mapper behavior, while Windows runtime capability still blocks full execution.
+- OpenClaw routing tests cover translated paths but not all advanced argument permutations.
+- Trope mapping tests cover mapper behavior; Windows runtime still has partial `automation.browser` support.
 
 ## Prioritized Backlog (Updated)
 
 ## P0 (practical superset blockers)
 
 - [ ] Replace simulated adapters with real macOS and Windows automation backends.
-- [ ] Expand OpenClaw translation coverage for parity-critical browser routes.
-- [ ] Unblock Trope Windows browser capability execution path (`automation.browser`).
+- [ ] Expand OpenClaw argument-surface compatibility for translated browser routes.
+- [ ] Expand Trope Windows `automation.browser` implementation beyond input/screenshot subset.
 
 ## P1 (integration quality and developer ergonomics)
 

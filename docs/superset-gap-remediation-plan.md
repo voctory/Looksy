@@ -27,21 +27,25 @@ Evidence:
   - looksy failure + fallback enabled -> legacy-fallback
   - looksy failure + fallback disabled -> surfaced error
 
-### 2. Trope Looksy browser mapping expanded beyond screenshot/click/type
+### 2. Trope Looksy browser mapping expanded across core browser actions
 
 Delivered behavior:
 - Looksy mapping now includes:
   - screenshot -> `screen.capture`
   - click -> `input.click`
   - hover -> `input.moveMouse`
+  - navigate -> `browser.navigate`
+  - snapshot/extract_visible_text/extract_interactables -> `browser.snapshot`
+  - scroll -> `input.scroll`
+  - start_recording/stop_recording -> `browser.trace.start`/`browser.trace.stop`
   - type_text -> `input.typeText`
-  - press_key (lossless single-character path) -> `input.typeText`
+  - press_key -> `input.pressKey`
 - Unsupported or lossy actions still return `None` mapping and depend on fallback policy.
 
 Evidence:
 - `../trope/packages/rust/trope-daemon/src/tools/mod.rs`
   - `map_browser_action_to_looksy_v1_command`
-  - `parse_lossless_press_key_text`
+  - `parse_press_key_repeat`
   - `execute_browser_command_with_routing`
 - tests in same file (`map_browser_action_to_looksy_maps_supported_actions`, `map_browser_action_to_looksy_rejects_unsupported_actions`)
 
@@ -72,11 +76,11 @@ Evidence:
 - Evidence: `host/adapters/macos.ts`, `host/adapters/windows.ts` (simulated behavior and synthetic payload generation).
 
 2. Consumer translation coverage remains partial.
-- OpenClaw Looksy route still rejects/falls back for parity routes such as `/navigate`, `/snapshot`, `/pdf`, `/console`, `/trace/start`, `/trace/stop`.
+- OpenClaw now routes `/navigate`, `/snapshot`, `/pdf`, `/console`, `/trace/start`, `/trace/stop` through Looksy, but still falls back for target-scoped and advanced parity arguments (for example selector/ref-targeted flows, `snapshot` aria/labels/depth modes, and custom trace/pdf output path controls).
 - Evidence: `../openclaw/src/gateway/server-methods/browser.ts` translation branches + routing tests.
 
-3. Trope Windows runtime still cannot execute `automation.browser` commands end-to-end.
-- Daemon routes browser via `capability_id = automation.browser`, but Windows agent does not expose/execute that capability today.
+3. Trope Windows runtime browser support remains partial.
+- Windows agent now exposes `automation.browser` and executes a truthful subset (`screen.capture`, `input.moveMouse`, `input.click`, `input.typeText`, `input.pressKey`, `input.scroll`), but browser state/trace/pdf/console command families are still unsupported at runtime.
 - Evidence: `../trope/packages/rust/trope-daemon/src/tools/mod.rs`, `../trope/apps/windows/WindowsAgent/Program.cs`, `../trope/docs/WINDOWS_AUTOMATION_LOOKSY_CAPABILITY_MATRIX_MAR_2026.md`.
 
 ### P1 blockers (needed to reduce integration friction)
