@@ -4,139 +4,145 @@ This plan tracks what remains before Looksy can be treated as a practical supers
 
 ## Current Assessment (March 4, 2026)
 
-Status: **not yet a superset**, but this wave moved key integration paths from design-only to partially routed production code.
+Status: **not yet a superset**.
+
+Recent protocol and Windows backend expansion closed several previously-missing command families (`input.drag`, `input.swipe`, clipboard read/write, `app.window*`), but consumer routing parity and real browser backend parity are still incomplete.
 
 ## Directional Decision (March 2026)
 
-- Phase 9-14 rollout work is now **OS-input-first**.
-- Browser-driver/state-heavy actions remain intentionally deferred to legacy execution paths until backend/runtime parity is proven.
+- Phase 9-14 rollout work remains **OS-input-first**.
+- Browser-driver/state-heavy actions remain deferred from default-on until backend/runtime parity is proven.
 - Source-of-truth rollout scope: `docs/os-input-surface.md`.
-- Source-of-truth capability parity matrix: `docs/peekaboo-parity-matrix-mar-2026.md`.
+- Source-of-truth capability matrix: `docs/peekaboo-parity-matrix-mar-2026.md`.
 
-## Implemented in This Wave (Evidence-Based)
+## Implemented State (Evidence-Based)
 
-### 1. OpenClaw browser entrypoint now supports feature-flagged Looksy routing
+### 1. Protocol command surface expanded
 
-Delivered behavior:
-- `LOOKSY_INTEGRATION_ENABLED`, `LOOKSY_FORCE_LEGACY_EXECUTION`, `LOOKSY_FALLBACK_TO_LEGACY_ON_ERROR`, `LOOKSY_OS_INPUT_ONLY` govern routing.
-- Successful responses include route metadata: `looksy`, `legacy`, `legacy-fallback`.
-- Unsupported/translation-limited operations are surfaced as typed errors or fallback to legacy (based on flag).
+Delivered command families now include:
+
+- Input: `input.drag`, `input.swipe` (plus existing move/click/type/press/scroll)
+- Clipboard: `clipboard.read`, `clipboard.write`
+- Window lifecycle: `app.windowMove`, `app.windowResize`, `app.windowMinimize`, `app.windowMaximize`, `app.windowClose`
 
 Evidence:
+
+- `protocol/schema.ts`
+- `protocol/generated/v1/identifiers.json`
+- `protocol/schema.test.ts`
+
+### 2. Windows backend expanded with real OS execution for new families
+
+Delivered Windows adapter execution now includes:
+
+- Real `input.drag` / `input.swipe`
+- Real `clipboard.read` / `clipboard.write`
+- Real `app.window*` lifecycle commands
+
+Evidence:
+
+- `host/adapters/windows.ts`
+  - `dragViaPowerShell`, `swipeViaPowerShell`
+  - `clipboardReadViaPowerShell`, `clipboardWriteViaPowerShell`
+  - `windowMoveViaPowerShell`, `windowResizeViaPowerShell`, `windowMinimizeViaPowerShell`, `windowMaximizeViaPowerShell`, `windowCloseViaPowerShell`
+- `host/__tests__/windows.automation.test.ts`
+
+### 3. OpenClaw Looksy routing expanded, but still has parity gaps
+
+Delivered/expanded routes include:
+
+- `GET /tabs` -> `app.listWindows`
+- `POST /tabs/focus` -> `app.focusWindow`
+- `POST /tabs/open` -> `browser.navigate`
+- `POST /tabs/action` with `action=list|select`
+
+Current OpenClaw gaps:
+
+- Region screenshot route still emits `screen.capture.region`.
+- `act:drag`, `act:swipe`, and clipboard kinds still return parity-gap unsupported errors.
+- `/tabs/action` with `action=new|close` remains unsupported.
+
+Evidence:
+
 - `../openclaw/src/gateway/server-methods/browser.ts`
-  - `resolveLooksyRoutingFlags`
-  - `translateBrowserRequestToLooksy`
-  - `invokeLooksyCommand`
-  - `browserHandlers["browser.request"]`
 - `../openclaw/src/gateway/server-methods/browser.looksy-routing.test.ts`
-  - integration-disabled -> legacy
-  - force-legacy -> legacy
-  - looksy failure + fallback enabled -> legacy-fallback
-  - looksy failure + fallback disabled -> surfaced error
 
-### 2. Trope Looksy browser mapping expanded across core browser actions
+### 4. Trope Looksy mapper expanded, but still partial
 
-Delivered behavior:
-- Looksy mapping now includes:
-  - screenshot -> `screen.capture`
-  - click -> `input.click`
-  - hover -> `input.moveMouse`
-  - navigate -> `browser.navigate`
-  - snapshot/extract_visible_text/extract_interactables -> `browser.snapshot`
-  - scroll -> `input.scroll`
-  - start_recording/stop_recording -> `browser.trace.start`/`browser.trace.stop`
-  - type_text -> `input.typeText`
-  - press_key -> `input.pressKey`
-- Unsupported or lossy actions still return `None` mapping and depend on fallback policy.
+Delivered/expanded mappings include:
+
+- `list_windows` -> `app.listWindows`
+- `focus_window` / `activate_tab` -> `app.focusWindow`
+- existing mappings for screenshot/click/hover/type/press/scroll/navigate/snapshot/trace
+
+Current Trope gaps:
+
+- Drag/swipe/clipboard looksy mappings remain unsupported (`None` mapper result).
+- No Looksy mapper branch for `browser.pdf` / `browser.console`.
 
 Evidence:
+
 - `../trope/packages/rust/trope-daemon/src/tools/mod.rs`
   - `map_browser_action_to_looksy_v1_command`
-  - `parse_press_key_repeat`
-  - `execute_browser_command_with_routing`
-- tests in same file (`map_browser_action_to_looksy_maps_supported_actions`, `map_browser_action_to_looksy_rejects_unsupported_actions`)
+  - routing tests (`map_browser_action_to_looksy_maps_supported_actions`, `map_browser_action_to_looksy_rejects_unsupported_actions`)
 
-### 3. Protocol/runtime primitives were expanded and validated
-
-Delivered primitives now present in protocol + host simulation:
-- Input: `input.pressKey`, `input.scroll`
-- Browser: `browser.navigate`, `browser.snapshot`, `browser.pdf`, `browser.console`, `browser.trace.start`, `browser.trace.stop`
-- Element: `element.find`, `element.invoke`, `element.setValue`
-- Host-managed: `control.cancel`, `observability.getMetrics`
-- Screenshot retrieval metadata + artifact endpoint (`artifactUrl`, `/v1/artifacts/{id}?sessionId=...`)
-
-Evidence:
-- `protocol/schema.ts`
-- `protocol/schema.test.ts`
-- `host/__tests__/core.test.ts`
-- `host/httpServer.ts`
-- `protocol/generated/v1/identifiers.json`
-- generated constants:
-  - `client/csharp/Looksy.Client/Generated/ProtocolConstants.g.cs`
-  - `client/rust/src/generated.rs`
-
-## Remaining Blockers After This Wave
+## Remaining Blockers
 
 ### P0 blockers (must close for practical superset claim)
 
-1. OpenClaw clipped screenshot command-type divergence.
-- OpenClaw region/clip path emits `screen.capture.region`.
-- Looksy protocol command list includes `screen.capture` (with optional `region`) and does not include `screen.capture.region`.
-- Evidence: `../openclaw/src/gateway/server-methods/browser.ts`, `../openclaw/src/gateway/server-methods/browser.looksy-routing.test.ts`, `protocol/schema.ts`, `protocol/generated/v1/identifiers.json`.
+1. OpenClaw screenshot region command mismatch.
+- OpenClaw emits `screen.capture.region` while Looksy command IDs include `screen.capture`.
+- Evidence: `../openclaw/src/gateway/server-methods/browser.ts`, `protocol/generated/v1/identifiers.json`.
 
-2. Browser-state backend parity remains incomplete.
-- Looksy protocol defines `browser.navigate`, `browser.snapshot`, `browser.pdf`, `browser.console`, `browser.trace.start`, `browser.trace.stop`.
-- Windows adapter currently serves these from simulated in-memory state instead of real browser backend execution.
-- Evidence: `protocol/schema.ts`, `host/adapters/windows.ts`.
+2. OpenClaw parity-gap guards still block new command families.
+- `act:drag`, `act:swipe`, and clipboard kinds are rejected even though Looksy protocol + Windows backend now support drag/swipe/clipboard commands.
+- Evidence: `../openclaw/src/gateway/server-methods/browser.ts`, `../openclaw/src/gateway/server-methods/browser.looksy-routing.test.ts`, `protocol/schema.ts`, `host/adapters/windows.ts`.
 
-3. Trope Windows runtime browser support remains partial for non-OS-input actions.
-- Trope mapper includes `navigate`, `snapshot` family, and trace start/stop mappings.
-- Windows agent `automation.browser` handler covers OS-input/screenshot subset and defaults unsupported actions to `unsupported_method`.
-- Evidence: `../trope/packages/rust/trope-daemon/src/tools/mod.rs`, `../trope/apps/windows/WindowsAgent/Program.cs`.
+3. Trope Looksy mapper still lacks drag/swipe/clipboard and browser pdf/console mappings.
+- Evidence: `../trope/packages/rust/trope-daemon/src/tools/mod.rs`.
 
-4. Element family is defined but not practical parity.
-- Looksy protocol includes `element.find`, `element.invoke`, `element.setValue`.
-- Windows adapter element handling is currently simulated (static element list + in-memory state).
-- OpenClaw/Trope Looksy browser mapping paths do not map these element commands.
-- Evidence: `protocol/schema.ts`, `host/adapters/windows.ts`, `../openclaw/src/gateway/server-methods/browser.ts`, `../trope/packages/rust/trope-daemon/src/tools/mod.rs`.
+4. Browser-state backend parity remains incomplete.
+- Looksy Windows adapter still serves `browser.navigate`/`snapshot`/`pdf`/`console`/`trace` from simulated in-memory state.
+- Trope Windows runtime `automation.browser` still supports only an OS-input/screenshot subset.
+- Evidence: `host/adapters/windows.ts`, `../trope/apps/windows/WindowsAgent/Program.cs`.
 
-5. Gesture primitives are absent from protocol and mappings.
-- No `input.drag`/`input.swipe` command IDs in Looksy protocol.
-- No drag/swipe Looksy mapping in OpenClaw `/act` translation or Trope Looksy mapper.
-- Evidence: `protocol/generated/v1/identifiers.json`, `../openclaw/src/gateway/server-methods/browser.ts`, `../trope/packages/rust/trope-daemon/src/tools/mod.rs`.
+5. Element family parity is still incomplete.
+- Windows adapter now has UIA-backed paths with fallback simulation, but OpenClaw/Trope Looksy routes do not map element commands.
+- Evidence: `host/adapters/windows.ts`, `../openclaw/src/gateway/server-methods/browser.ts`, `../trope/packages/rust/trope-daemon/src/tools/mod.rs`.
 
 ### P1 blockers (needed to reduce integration friction)
 
-6. Target-scoped browser semantics remain constrained.
-- OpenClaw explicitly rejects `targetId` and ref/selector/frame/depth/labels modes on translated routes.
-- Trope mapper returns `None` for target/ref/selector-heavy variants.
-- Evidence: `../openclaw/src/gateway/server-methods/browser.ts`, `../openclaw/src/gateway/server-methods/browser.looksy-routing.test.ts`, `../trope/packages/rust/trope-daemon/src/tools/mod.rs`.
+6. Window lifecycle mappings are not exposed in OpenClaw/Trope Looksy integrations.
+- `app.window*` exists in protocol + Windows backend, but consumers do not route these commands yet.
+- Evidence: `protocol/schema.ts`, `host/adapters/windows.ts`, `../openclaw/src/gateway/server-methods/browser.ts`, `../trope/packages/rust/trope-daemon/src/tools/mod.rs`.
 
-7. Missing command families: clipboard and broader window lifecycle/app controls.
-- Clipboard copy/paste and lifecycle controls (move/resize/min/max/close/launch/quit) are not represented in current Looksy command identifiers.
+7. App launch/quit command family is still missing.
+- `app.launch`/`app.quit` are absent from Looksy command identifiers.
 - Evidence: `protocol/generated/v1/identifiers.json`.
 
-8. SDK convenience wrappers lag protocol breadth.
-- C# and Rust wrappers currently expose only a subset (health/capabilities/screenshot/windows list) despite generated constants carrying broader command IDs.
-- Evidence:
-  - `client/csharp/Looksy.Client/LooksyClient.cs`
-  - `client/rust/src/client.rs`
+8. Target-scoped browser semantics remain constrained.
+- `targetId`/selector/ref/frame/depth/labels variants are still explicitly rejected in mapped paths.
+- Evidence: `../openclaw/src/gateway/server-methods/browser.ts`, `../trope/packages/rust/trope-daemon/src/tools/mod.rs`.
 
-9. Parity tests are still concentrated on limited routed paths; broader cross-consumer contract tests are pending.
+9. SDK convenience wrappers lag protocol breadth.
+- Evidence: `client/csharp/Looksy.Client/LooksyClient.cs`, `client/rust/src/client.rs`.
+
+10. Cross-consumer parity tests are still narrow for long-tail argument combinations.
 
 ## Validation + Rollout Toggle Reference
 
-- Validation commands and rollout flag matrix are maintained in `docs/os-input-surface.md`.
-- Consumer routing flag evidence:
+- Validation commands and rollout flag matrix: `docs/os-input-surface.md`.
+- Routing flag evidence:
   - OpenClaw: `../openclaw/src/gateway/server-methods/browser.ts`
   - Trope: `../trope/packages/rust/trope-daemon/src/tools/mod.rs`
 
 ## Updated Execution Order
 
-1. **P0**: align OpenClaw clipped screenshot command type with Looksy `screen.capture` protocol contract.
-2. **P0**: replace simulated Windows browser-state handlers with real backend execution (`navigate`/`snapshot`/`pdf`/`console`/`trace`).
-3. **P0**: deliver real Looksy element backend and wire OpenClaw/Trope mappings.
-4. **P0**: add `input.drag` and `input.swipe` end-to-end (protocol + Windows backend + consumer mappings).
-5. **P1**: close target-scoped browser semantic gaps and add missing clipboard/window lifecycle command families.
-6. **P1**: expand C#/Rust wrappers and broaden cross-consumer parity/regression matrix coverage.
-7. **P2**: complete phases 9-14 rollout gates (staging drill, canary, default-on, legacy removal) once P0/P1 are stable.
+1. **P0**: Align OpenClaw clipped screenshot routing with Looksy `screen.capture` contract.
+2. **P0**: Wire OpenClaw `act:drag`/`act:swipe`/clipboard paths to new Looksy commands.
+3. **P0**: Add Trope Looksy mappings for drag/swipe/clipboard and browser pdf/console.
+4. **P0**: Replace simulated Windows browser-state handlers with real backend execution.
+5. **P0**: Expose element commands in OpenClaw/Trope Looksy integration paths and harden UIA-first behavior.
+6. **P1**: Add consumer mappings for `app.window*` and define `app.launch`/`app.quit` protocol strategy.
+7. **P1**: Expand target-scoped semantics + regression matrix + SDK wrappers.
+8. **P2**: Complete phases 9-14 rollout gates (staging drill, canary, default-on, legacy removal) once P0/P1 are stable.
